@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DIZO Watch D — Web Bluetooth Time Sync</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(22, 28, 45, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(255, 255, 255, 0.12);
+      --primary: #3b82f6;
+      --primary-glow: rgba(59, 130, 246, 0.35);
+      --accent: #10b981;
+      --accent-glow: rgba(16, 185, 129, 0.35);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --radius: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% -20%, #1e293b 0%, #0b0f19 70%);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.5rem;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, var(--primary), #8b5cf6);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+
+    .brand-icon svg {
+      width: 24px;
+      height: 24px;
+      fill: #fff;
+    }
+
+    .brand-text h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-text p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    .status-badge.connected {
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .clock-display {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      text-align: center;
+      margin-bottom: 1.25rem;
+    }
+
+    .clock-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 2.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #60a5fa;
+      text-shadow: 0 0 25px rgba(96, 165, 250, 0.3);
+    }
+
+    .clock-date {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-top: 0.35rem;
+    }
+
+    .actions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 600px) {
+      .actions-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    button {
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.85rem 1.25rem;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: none;
+      outline: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: #fff;
+      box-shadow: 0 4px 15px var(--primary-glow);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #60a5fa, #3b82f6);
+      transform: translateY(-2px);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+
+    .btn-success:hover:not(:disabled) {
+      background: linear-gradient(135deg, #34d399, #10b981);
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border: 1px solid var(--card-border);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .custom-time-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      align-items: center;
+    }
+
+    input[type="time"] {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      outline: none;
+      flex: 1;
+    }
+
+    input[type="time"]:focus {
+      border-color: var(--primary);
+    }
+
+    .terminal {
+      background: #050811;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .log-entry {
+      line-height: 1.4;
+      word-break: break-all;
+    }
+
+    .log-info { color: #94a3b8; }
+    .log-success { color: #34d399; }
+    .log-warn { color: #fbbf24; }
+    .log-error { color: #f87171; }
+    .log-pkt { color: #60a5fa; font-weight: 500; }
+
+    .protocol-card {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .protocol-tag {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 6px;
+      color: #93c5fd;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z"/></svg>
+        </div>
+        <div class="brand-text">
+          <h1>DIZO Watch D Sync</h1>
+          <p>HTSmart / FitCloudPro Protocol Engine</p>
+        </div>
+      </div>
+      <div id="statusBadge" class="status-badge">
+        <div class="status-dot"></div>
+        <span id="statusText">Disconnected</span>
+      </div>
+    </header>
+
+    <!-- Main Control Card -->
+    <div class="card">
+      <h2>Device Control & Sync</h2>
+      
+      <div class="clock-display">
+        <div id="clockTime" class="clock-time">--:--:--</div>
+        <div id="clockDate" class="clock-date">Loading time...</div>
+      </div>
+
+      <div class="actions-grid">
+        <button id="btnConnect" class="btn-primary" onclick="toggleConnect()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7l10 10M17 7L7 17"/></svg>
+          <span id="btnConnectText">Connect DIZO Watch D</span>
+        </button>
+
+        <button id="btnSyncNow" class="btn-success" onclick="syncCurrentTime()" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Sync Real Time Now
+        </button>
+      </div>
+
+      <div class="custom-time-row">
+        <input type="time" id="customTimePicker" value="16:20" step="1">
+        <button id="btnSyncCustom" class="btn-secondary" onclick="syncCustomTime()" disabled>
+          Set Test Time
+        </button>
+      </div>
+    </div>
+
+    <!-- Packet Activity Terminal -->
+    <div class="card">
+      <h2>Activity & BLE Packets</h2>
+      <div id="terminal" class="terminal">
+        <div class="log-entry log-info">[System] HTSmart protocol driver ready. Click "Connect DIZO Watch D" to pair via Web Bluetooth.</div>
+      </div>
+    </div>
+
+    <!-- Protocol Specs Footer -->
+    <div class="card protocol-card">
+      <div><strong>Hardware Connection:</strong> <span class="protocol-tag">Service: 000001FF-3C17-D293-8E48-14FE2E4DA212</span> <span class="protocol-tag">Char: FF02 (Write)</span> <span class="protocol-tag">Char: FF03 (Notify)</span></div>
+      <div><strong>HTSmart Framing:</strong> 17-byte frame: <code>[0xAB, 0x00, len(2B), crc16(2B), seq(2B), cmd(0x02), ver(0x00), key(0x01), len(0x0004), packed_time(4B)]</code></div>
+    </div>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════════════════
+    //  HTSmart / FitCloudPro CRC16 & Protocol Implementation
+    // ═══════════════════════════════════════════════════════════
+    const CRC16_TABLE = [
+      0, 49345, 49537, 320, 49921, 960, 640, 49729, 50689, 1728, 1920, 51009, 1280, 50625, 50305, 1088,
+      52225, 3264, 3456, 52545, 3840, 53185, 52865, 3648, 2560, 51905, 52097, 2880, 51457, 2496, 2176, 51265,
+      55297, 6336, 6528, 55617, 6912, 56257, 55937, 6720, 7680, 57025, 57217, 8000, 56577, 7616, 7296, 56385,
+      5120, 54465, 54657, 5440, 55041, 6080, 5760, 54849, 53761, 4800, 4992, 54081, 4352, 53697, 53377, 4160,
+      61441, 12480, 12672, 61761, 13056, 62401, 62081, 12864, 13824, 63169, 63361, 14144, 62721, 13760, 13440, 62529,
+      15360, 64705, 64897, 15680, 65281, 16320, 16000, 65089, 64001, 15040, 15232, 64321, 14592, 63937, 63617, 14400,
+      10240, 59585, 59777, 10560, 60161, 11200, 10880, 59969, 60929, 11968, 12160, 61249, 11520, 60865, 60545, 11328,
+      58369, 9408, 9600, 58689, 9984, 59329, 59009, 9792, 8704, 58049, 58241, 9024, 57601, 8640, 8320, 57409,
+      40961, 24768, 24960, 41281, 25344, 41921, 41601, 25152, 26112, 42689, 42881, 26432, 42241, 26048, 25728, 42049,
+      27648, 44225, 44417, 27968, 44801, 28608, 28288, 44609, 43521, 27328, 27520, 43841, 26880, 43457, 43137, 26688,
+      30720, 47297, 47489, 31040, 47873, 31680, 31360, 47681, 48641, 32448, 32640, 48961, 32000, 48577, 48257, 31808,
+      46081, 29888, 30080, 46401, 30464, 47041, 46721, 30272, 29184, 45761, 45953, 29504, 45313, 29120, 28800, 45121,
+      20480, 37057, 37249, 20800, 37633, 21440, 21120, 37441, 38401, 22208, 22400, 38721, 21760, 38337, 38017, 21568,
+      39937, 23744, 23936, 40257, 24320, 40897, 40577, 24128, 23040, 39617, 39809, 23360, 39169, 22976, 22656, 38977,
+      34817, 18624, 18816, 35137, 19200, 35777, 35457, 19008, 19968, 36545, 36737, 20288, 36097, 19904, 19584, 35905,
+      17408, 33985, 34177, 17728, 34561, 18368, 18048, 34369, 33281, 17088, 17280, 33601, 16640, 33217, 32897, 16448
+    ];
+
+    function calcCrc16(data) {
+      let crc = 0;
+      for (let i = 0; i < data.length; i++) {
+        crc = ((crc >> 8) ^ CRC16_TABLE[(data[i] ^ crc) & 0xFF]) & 0xFFFF;
+      }
+      return crc;
+    }
+
+    function buildHTSmartTimePacket(dt, seq = 1) {
+      const yearVal = dt.getFullYear() - 2000;
+      const month = dt.getMonth() + 1;
+      const day = dt.getDate();
+      const hour = dt.getHours();
+      const minute = dt.getMinutes();
+      const second = dt.getSeconds();
+
+      const b0 = ((yearVal << 2) | (month >> 2)) & 0xFF;
+      const b1 = ((month << 6) | (day << 1) | (hour >> 4)) & 0xFF;
+      const b2 = ((hour << 4) | (minute >> 2)) & 0xFF;
+      const b3 = ((minute << 6) | second) & 0xFF;
+
+      const cmdPacket = new Uint8Array([
+        0x02, 0x00,             // CmdPacket: cmdId=2 (SET), ver=0
+        0x01, 0x00, 0x04,       // KeyPacket: keyId=1 (TIME), len=4
+        b0, b1, b2, b3          // 4-byte packed date/time
+      ]);
+
+      const len = cmdPacket.length;
+      const crc = calcCrc16(cmdPacket);
+
+      const packet = new Uint8Array(8 + len);
+      packet[0] = 0xAB;
+      packet[1] = 0x00;
+      packet[2] = (len >> 8) & 0xFF;
+      packet[3] = len & 0xFF;
+      packet[4] = (crc >> 8) & 0xFF;
+      packet[5] = crc & 0xFF;
+      packet[6] = (seq >> 8) & 0xFF;
+      packet[7] = seq & 0xFF;
+      packet.set(cmdPacket, 8);
+
+      return packet;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  Web Bluetooth GATT Driver
+    // ═══════════════════════════════════════════════════════════
+    const SERVICE_UUID = '000001ff-3c17-d293-8e48-14fe2e4da212';
+    const CHAR_WRITE_UUID = '0000ff02-0000-1000-8000-00805f9b34fb';
+    const CHAR_NOTIFY_UUID = '0000ff03-0000-1000-8000-00805f9b34fb';
+
+    let bleDevice = null;
+    let bleServer = null;
+    let writeChar = null;
+    let notifyChar = null;
+    let seqCounter = 1;
+
+    function log(msg, type = 'info') {
+      const term = document.getElementById('terminal');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = `log-entry log-${type}`;
+      div.textContent = `[${time}] ${msg}`;
+      term.appendChild(div);
+      term.scrollTop = term.scrollHeight;
+    }
+
+    function bytesToHex(uint8arr) {
+      return Array.from(uint8arr).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('clockTime').textContent = now.toLocaleTimeString();
+      document.getElementById('clockDate').textContent = now.toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    async function toggleConnect() {
+      if (bleDevice && bleDevice.gatt.connected) {
+        log('Disconnecting from DIZO Watch D...', 'info');
+        bleDevice.gatt.disconnect();
+        return;
+      }
+
+      if (!navigator.bluetooth) {
+        log('Web Bluetooth is not supported in this browser. Please use Google Chrome or Edge.', 'error');
+        alert('Web Bluetooth is not supported on this browser. Please open in Google Chrome or Edge!');
+        return;
+      }
+
+      try {
+        log('Requesting Bluetooth device filter: DIZO Watch D...', 'info');
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'DIZO' }, { namePrefix: 'Watch' }],
+          optionalServices: [SERVICE_UUID, '0000d0ff-3c17-d293-8e48-14fe2e4da212']
+        });
+
+        bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+        log(`Connecting to GATT server (${bleDevice.name})...`, 'info');
+        bleServer = await bleDevice.gatt.connect();
+
+        log('Discovering Primary Service (000001FF)...', 'info');
+        const service = await bleServer.getPrimaryService(SERVICE_UUID);
+
+        log('Resolving Write Characteristic FF02...', 'info');
+        writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
+
+        log('Resolving Notify Characteristic FF03...', 'info');
+        notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
+
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener('characteristicvaluechanged', onNotifyReceived);
+        log('Subscribed to notifications on FF03.', 'success');
+
+        setConnectedState(true);
+        log('🎉 Connected & paired with DIZO Watch D successfully!', 'success');
+
+        // Automatically sync time on connection
+        await syncCurrentTime();
+
+      } catch (err) {
+        log(`Connection failed: ${err.message}`, 'error');
+        setConnectedState(false);
+      }
+    }
+
+    function onDisconnected() {
+      log('Watch disconnected.', 'warn');
+      setConnectedState(false);
+    }
+
+    function setConnectedState(connected) {
+      const badge = document.getElementById('statusBadge');
+      const text = document.getElementById('statusText');
+      const btn = document.getElementById('btnConnect');
+      const btnText = document.getElementById('btnConnectText');
+      const syncBtn = document.getElementById('btnSyncNow');
+      const customBtn = document.getElementById('btnSyncCustom');
+
+      if (connected) {
+        badge.classList.add('connected');
+        text.textContent = 'Connected: ' + (bleDevice ? bleDevice.name : 'DIZO Watch D');
+        btnText.textContent = 'Disconnect Watch';
+        syncBtn.disabled = false;
+        customBtn.disabled = false;
+      } else {
+        badge.classList.remove('connected');
+        text.textContent = 'Disconnected';
+        btnText.textContent = 'Connect DIZO Watch D';
+        syncBtn.disabled = true;
+        customBtn.disabled = true;
+        writeChar = null;
+        notifyChar = null;
+      }
+    }
+
+    function onNotifyReceived(event) {
+      const val = new Uint8Array(event.target.value.buffer);
+      log(`<< [WATCH NOTIFY] ${bytesToHex(val)}`, 'pkt');
+      if (val.length >= 2 && val[0] === 0xAB && (val[1] === 0x10 || val[1] === 0x30)) {
+        log('✅ Watch ACK Received: Time successfully synchronized on watch display!', 'success');
+      }
+    }
+
+    async function sendPacket(dt) {
+      if (!writeChar) {
+        log('Cannot send: Watch not connected.', 'error');
+        return;
+      }
+
+      const seq = seqCounter++;
+      const packet = buildHTSmartTimePacket(dt, seq);
+      log(`>> [TX HTSmart] Target: ${dt.toLocaleTimeString()} | Hex: ${bytesToHex(packet)}`, 'pkt');
+
+      try {
+        await writeChar.writeValue(packet);
+        log('Packet written to FF02. Waiting for watch ACK...', 'info');
+      } catch (err) {
+        log(`Write failed: ${err.message}`, 'error');
+      }
+    }
+
+    async function syncCurrentTime() {
+      const now = new Date();
+      log(`Synchronizing current real time: ${now.toLocaleTimeString()}...`, 'info');
+      await sendPacket(now);
+    }
+
+    async function syncCustomTime() {
+      const pickerVal = document.getElementById('customTimePicker').value;
+      if (!pickerVal) return;
+      const parts = pickerVal.split(':');
+      const dt = new Date();
+      dt.setHours(parseInt(parts[0]), parseInt(parts[1]), parts[2] ? parseInt(parts[2]) : 0);
+      log(`Synchronizing custom test time: ${dt.toLocaleTimeString()}...`, 'info');
+      await sendPacket(dt);
+    }
+  </script>
+</body>
+</html>
