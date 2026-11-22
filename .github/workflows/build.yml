@@ -65,7 +65,7 @@ jobs:
         run: |
           cd flutter
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --android-skip-build-dependency-validation
           mkdir -p ../dist
           cp build/app/outputs/flutter-apk/app-release.apk ../dist/open-dizo-android.apk
 
