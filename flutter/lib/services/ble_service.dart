@@ -28,6 +28,7 @@ class BleService extends ChangeNotifier {
 
   WatchTelemetry _telemetry = const WatchTelemetry();
   WatchSettings _settings = const WatchSettings();
+  List<int>? _rawBrightnessVibrateConfig;
 
   final List<LogEntry> _logs = [];
   final List<StreamSubscription> _subscriptions = [];
@@ -465,41 +466,65 @@ class BleService extends ChangeNotifier {
   void _decodeIncomingPacket(List<int> data, String source) {
     if (data.isEmpty) return;
 
-    // Check for standard HTSmart transport frame: [0xAB, flags, len_hi, len_lo, crc_hi, crc_lo, seq_hi, seq_lo, cmdId, 0x00, keyId, klen_hi, klen_lo, keyData...]
-    if (data.length >= 13 && data[0] == 0xAB) {
+    // 1. Check for standard HTSmart transport frame: [0xAB, flags, len_hi, len_lo, crc_hi, crc_lo, seq_hi, seq_lo, cmdId, version, keyPacket...]
+    if (data.length >= 10 && data[0] == 0xAB) {
+      if (data.length == 8) return; // ACK packet
       final cmdId = data[8];
-      final keyId = data[10];
-      final keyDataLength = ((data[11] << 8) | data[12]) & 0xFFFF;
-      final keyData = data.length >= 13 + keyDataLength
-          ? data.sublist(13, 13 + keyDataLength)
-          : (data.length > 13 ? data.sublist(13) : <int>[]);
-
-      _handleCmdKey(cmdId, keyId, keyData, source);
+      if (data.length > 10) {
+        _parseCmdPacket(cmdId, data.sublist(10), source);
+      }
       return;
     }
 
-    // Direct / unframed packet format
+    // 2. Direct / unframed packet format: [cmdId, version, keyPacket...]
+    if (data.length >= 5 && (data[0] == 0x02 || data[0] == 0x05 || data[0] == 0x03 || data[0] == 0x01 || data[0] == 0x07)) {
+      final cmdId = data[0];
+      _parseCmdPacket(cmdId, data.sublist(2), source);
+      return;
+    }
+
+    // 3. Fallback direct packet format without version byte (e.g. [cmdId, keyId, ...])
     if (data.length >= 3 && (data[0] == 0x02 || data[0] == 0x05)) {
       final cmdId = data[0];
-      final keyId = data[2];
-      final keyData = data.length > 3 ? data.sublist(3) : <int>[];
+      final keyId = data[1];
+      final keyData = data.sublist(2);
       _handleCmdKey(cmdId, keyId, keyData, source);
       return;
     }
 
-    // Legacy / Realtek telemetry frames
+    // 4. Legacy / Realtek telemetry frames
     _decodeLegacyTelemetry(data);
+  }
+
+  void _parseCmdPacket(int cmdId, List<int> keyBytes, String source) {
+    int offset = 0;
+    while (offset + 3 <= keyBytes.length) {
+      final keyId = keyBytes[offset];
+      final klen = (((keyBytes[offset + 1] & 0x01) << 8) | (keyBytes[offset + 2] & 0xFF));
+      final payloadStart = offset + 3;
+      final payloadEnd = payloadStart + klen;
+      final keyData = payloadEnd <= keyBytes.length
+          ? keyBytes.sublist(payloadStart, payloadEnd)
+          : (payloadStart <= keyBytes.length ? keyBytes.sublist(payloadStart) : <int>[]);
+
+      _handleCmdKey(cmdId, keyId, keyData, source);
+
+      offset = payloadStart + klen;
+      if (klen == 0) {
+        break;
+      }
+    }
   }
 
   void _handleCmdKey(int cmdId, int keyId, List<int> keyData, String source) {
     // 1. TodayTotalData response: Cmd 0x05, Key 0x22 (34)
     if (cmdId == 0x05 && keyId == 0x22 && keyData.length >= 24) {
-      final steps = _bytesToInt(keyData, 0, 4);
-      final distMeters = _bytesToInt(keyData, 4, 4).toDouble();
-      final calories = _bytesToInt(keyData, 8, 4);
-      final deepSleep = _bytesToInt(keyData, 12, 4);
-      final lightSleep = _bytesToInt(keyData, 16, 4);
-      final hr = _bytesToInt(keyData, 20, 4);
+      final steps = _bytesToIntBE(keyData, 0, 4);
+      final distMeters = _bytesToIntBE(keyData, 4, 4).toDouble();
+      final calories = _bytesToIntBE(keyData, 8, 4);
+      final deepSleep = _bytesToIntBE(keyData, 12, 4);
+      final lightSleep = _bytesToIntBE(keyData, 16, 4);
+      final hr = _bytesToIntBE(keyData, 20, 4);
 
       _telemetry = _telemetry.copyWith(
         steps: steps,
@@ -543,7 +568,7 @@ class BleService extends ChangeNotifier {
     // 3. Battery Status: Cmd 0x02, Key 0x1C (28)
     if (cmdId == 0x02 && keyId == 0x1C && keyData.isNotEmpty) {
       final isCharging = keyData[0] == 1;
-      final percent = keyData.length >= 3 ? keyData[2] : (keyData.length >= 2 ? keyData[1] : 0);
+      final percent = keyData.length >= 3 ? keyData[2] : (keyData.length >= 2 ? keyData[1] * 20 : 0);
       if (percent >= 0 && percent <= 100) {
         _telemetry = _telemetry.copyWith(battery: percent, lastSyncTime: DateTime.now());
         _saveTelemetry();
@@ -598,13 +623,6 @@ class BleService extends ChangeNotifier {
         }
         break;
 
-      case 0x05: // Battery
-        if (data.length >= 2 && data[1] <= 100) {
-          _telemetry = _telemetry.copyWith(battery: data[1], lastSyncTime: DateTime.now());
-          changed = true;
-        }
-        break;
-
       case 0x0A: // SpO2
         if (data.length >= 3 && data[2] >= 70 && data[2] <= 100) {
           _telemetry = _telemetry.copyWith(spo2: data[2], lastSyncTime: DateTime.now());
@@ -652,9 +670,34 @@ class BleService extends ChangeNotifier {
         switch (type) {
           case 122: // BrightnessVibrateConfig (0x7A)
             if (itemData.length >= 32) {
+              _rawBrightnessVibrateConfig = List<int>.from(itemData);
               timeout = itemData[0];
-              brightness = itemData[24].clamp(1, 5);
-              vibration = itemData[31].clamp(0, 2);
+              final brightCount = itemData[25] & 0xFF;
+              if (brightCount > 0 && itemData.length >= 26 + brightCount) {
+                int activeIdx = 0;
+                for (int i = 0; i < brightCount; i++) {
+                  if (itemData[26 + i] == itemData[24]) {
+                    activeIdx = i;
+                    break;
+                  }
+                }
+                brightness = (activeIdx + 1).clamp(1, 5);
+              } else {
+                brightness = itemData[24].clamp(1, 5);
+              }
+              final vibCount = itemData[32] & 0xFF;
+              if (vibCount > 0 && itemData.length >= 33 + vibCount) {
+                int activeVib = 0;
+                for (int i = 0; i < vibCount; i++) {
+                  if (itemData[33 + i] == itemData[31]) {
+                    activeVib = i;
+                    break;
+                  }
+                }
+                vibration = activeVib.clamp(0, 2);
+              } else {
+                vibration = itemData[31].clamp(0, 2);
+              }
             }
             break;
           case 45: // TurnWristLightingConfig (0x2D)
@@ -734,11 +777,11 @@ class BleService extends ChangeNotifier {
     }
   }
 
-  static int _bytesToInt(List<int> bytes, int offset, int length) {
+  static int _bytesToIntBE(List<int> bytes, int offset, int length) {
     int value = 0;
     for (int i = 0; i < length; i++) {
       if (offset + i < bytes.length) {
-        value |= (bytes[offset + i] & 0xFF) << (8 * i);
+        value = (value << 8) | (bytes[offset + i] & 0xFF);
       }
     }
     return value;
@@ -787,9 +830,6 @@ class BleService extends ChangeNotifier {
       // 4. Watch configuration query (Brightness, Reminders, Preferences)
       await queryWatchConfig();
       await Future.delayed(const Duration(milliseconds: 200));
-
-      // 5. Instant sensor health sample (HR & SpO2)
-      await triggerLiveHealthSample();
 
       _telemetry = _telemetry.copyWith(lastSyncTime: DateTime.now());
       await _saveTelemetry();
@@ -879,6 +919,7 @@ class BleService extends ChangeNotifier {
         brightness: brightness,
         timeoutSeconds: timeoutSeconds,
         vibration: vibration,
+        rawConfig: _rawBrightnessVibrateConfig,
       );
       await writeFF02(packet, 'Update Brightness & Timeout');
     }

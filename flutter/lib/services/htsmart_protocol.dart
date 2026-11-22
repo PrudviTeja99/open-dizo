@@ -135,9 +135,9 @@ class HtsmartProtocol {
       cmdId: 0x05,
       keyId: 0x23, // 35
       payload: [
-        (healthyType >> 8) & 0xFF,
-        healthyType & 0xFF,
-        enable ? 5 : 0,
+        enable ? ((healthyType >> 8) & 0xFF) : 0,
+        enable ? (healthyType & 0xFF) : 0,
+        5,
         enable ? (durationMinutes & 0xFF) : 0,
       ],
       seq: seq,
@@ -181,32 +181,53 @@ class HtsmartProtocol {
     required int brightness, // 1..5
     required int timeoutSeconds, // 5, 10, 15
     int vibration = 1, // 0..2
+    List<int>? rawConfig,
     int seq = 1,
   }) {
-    final payload = List<int>.filled(38, 0);
+    final payload = (rawConfig != null && rawConfig.length >= 38)
+        ? List<int>.from(rawConfig)
+        : List<int>.filled(38, 0);
 
     // Timeout duration options [0..6]: current selected at offset 0
+    final durationCount = payload[1] > 0 ? payload[1] : 3;
     payload[0] = timeoutSeconds.clamp(5, 30);
-    payload[1] = 3; // 3 duration presets
-    payload[2] = 5;
-    payload[3] = 10;
-    payload[4] = 15;
+    payload[1] = durationCount;
+    if (payload[2] == 0) payload[2] = 5;
+    if (payload[3] == 0) payload[3] = 10;
+    if (payload[4] == 0) payload[4] = 15;
+
+    // Turn wrist lighting duration [7..13]: mandatory structure for watch firmware acceptance
+    if (payload[8] == 0) {
+      payload[7] = 5;
+      payload[8] = 3;
+      payload[9] = 3;
+      payload[10] = 5;
+      payload[11] = 7;
+    }
 
     // Brightness options [24..30]: current selected at offset 24
-    payload[24] = brightness.clamp(1, 5);
-    payload[25] = 5; // 5 brightness levels
-    payload[26] = 1;
-    payload[27] = 2;
-    payload[28] = 3;
-    payload[29] = 4;
-    payload[30] = 5;
+    final brightCount = payload[25] > 0 ? payload[25] : 5;
+    payload[25] = brightCount;
+    if (payload[26] == 0) {
+      payload[26] = 1;
+      payload[27] = 2;
+      payload[28] = 3;
+      payload[29] = 4;
+      payload[30] = 5;
+    }
+    final brightIdx = (brightness - 1).clamp(0, brightCount - 1);
+    payload[24] = payload[26 + brightIdx];
 
     // Vibration options [31..37]: current selected at offset 31
-    payload[31] = vibration.clamp(0, 2);
-    payload[32] = 3;
-    payload[33] = 0;
-    payload[34] = 1;
-    payload[35] = 2;
+    final vibCount = payload[32] > 0 ? payload[32] : 3;
+    payload[32] = vibCount;
+    if (payload[33] == 0 && payload[34] == 0) {
+      payload[33] = 0;
+      payload[34] = 1;
+      payload[35] = 2;
+    }
+    final vibIdx = vibration.clamp(0, vibCount - 1);
+    payload[31] = payload[33 + vibIdx];
 
     return buildPacket(
       cmdId: 0x02,

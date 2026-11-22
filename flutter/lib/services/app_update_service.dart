@@ -24,7 +24,7 @@ class AppReleaseInfo {
 }
 
 class AppUpdateService {
-  static const String currentVersion = '1.1.0';
+  static const String currentVersion = '1.1.1';
   static const String repoOwner = 'PrudviTeja99';
   static const String repoName = 'open-dizo';
   static const MethodChannel _channel = MethodChannel('bpt.studiohq.open_dizo/updater');
