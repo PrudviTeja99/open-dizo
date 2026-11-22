@@ -1,0 +1,198 @@
+name: Build Flutter Apps (Android APK & Linux AppImage)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'flutter/**'
+      - '.github/workflows/**'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'flutter/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold Android Platform & Configure SDK
+        run: |
+          cd flutter
+          # Backup existing custom AndroidManifest with BLE permissions
+          cp android/app/src/main/AndroidManifest.xml /tmp/AndroidManifest.xml.bak
+          
+          # Scaffold full Android project files
+          flutter create --platforms=android --org com.dizosync .
+          
+          # Restore custom AndroidManifest.xml
+          cp /tmp/AndroidManifest.xml.bak android/app/src/main/AndroidManifest.xml
+          
+          # Set minSdkVersion >= 21 required by flutter_blue_plus
+          if [ -f "android/app/build.gradle" ]; then
+            sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
+            sed -i 's/minSdkVersion [0-9]\+/minSdkVersion 21/g' android/app/build.gradle || true
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
+            sed -i 's/minSdk = [0-9]\+/minSdk = 21/g' android/app/build.gradle || true
+          fi
+          if [ -f "android/app/build.gradle.kts" ]; then
+            sed -i 's/minSdk = [0-9]\+/minSdk = 21/g' android/app/build.gradle.kts || true
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle.kts || true
+          fi
+
+      - name: Build Android Release APK
+        run: |
+          cd flutter
+          flutter pub get
+          flutter build apk --release
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk ../dist/dizo-watch-sync-android.apk
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dizo-watch-sync-android-apk
+          path: dist/dizo-watch-sync-android.apk
+
+  build-linux:
+    name: Build Linux AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            libblkid-dev \
+            libsecret-1-dev \
+            wget \
+            file
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold Linux Platform & Build Binary
+        run: |
+          cd flutter
+          flutter create --platforms=linux --org com.dizosync .
+          flutter pub get
+          flutter build linux --release
+
+      - name: Package Linux AppImage
+        run: |
+          cd flutter
+          APP_DIR="AppDir"
+          rm -rf "$APP_DIR"
+          mkdir -p "$APP_DIR/usr/bin"
+          mkdir -p "$APP_DIR/usr/lib"
+          mkdir -p "$APP_DIR/usr/share/icons/hicolor/256x256/apps"
+
+          # Copy Flutter Linux release bundle
+          cp -r build/linux/x64/release/bundle/* "$APP_DIR/"
+
+          # Create desktop entry
+          cat << 'EOF' > "$APP_DIR/dizo_watch_sync.desktop"
+          [Desktop Entry]
+          Name=DIZO Watch Sync
+          Comment=Minimal BLE sync app for DIZO Watch D
+          Exec=dizo_watch_sync
+          Icon=dizo_watch_sync
+          Terminal=false
+          Type=Application
+          Categories=Utility;
+          EOF
+
+          # Create desktop icon
+          if [ -f "../wallpapers/dizo_wallpaper_240x286.png" ]; then
+            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/dizo_watch_sync.png"
+            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/.DirIcon"
+            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/usr/share/icons/hicolor/256x256/apps/dizo_watch_sync.png"
+          fi
+
+          # Create AppRun launcher
+          cat << 'EOF' > "$APP_DIR/AppRun"
+          #!/bin/sh
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}:${HERE}/usr/bin/:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}/lib:${HERE}/usr/lib/:${LD_LIBRARY_PATH}"
+          exec "${HERE}/dizo_watch_sync" "$@"
+          EOF
+          chmod +x "$APP_DIR/AppRun"
+
+          # Download and run appimagetool without FUSE
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool.AppImage
+          chmod +x appimagetool.AppImage
+          ./appimagetool.AppImage --appimage-extract
+
+          mkdir -p ../dist
+          ARCH=x86_64 ./squashfs-root/AppRun "$APP_DIR" ../dist/DizoWatchSync-x86_64.AppImage
+          chmod +x ../dist/DizoWatchSync-x86_64.AppImage
+
+      - name: Upload Linux AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dizo-watch-sync-linux-appimage
+          path: dist/DizoWatchSync-x86_64.AppImage
+
+  release:
+    name: Publish GitHub Release Assets
+    needs: [build-android, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Android Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dizo-watch-sync-android-apk
+          path: dist
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dizo-watch-sync-linux-appimage
+          path: dist
+
+      - name: Create Release & Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/dizo-watch-sync-android.apk
+            dist/DizoWatchSync-x86_64.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
