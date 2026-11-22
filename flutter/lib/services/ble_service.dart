@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants/dizo_uuids.dart';
 import '../models/discovered_device.dart';
@@ -16,6 +17,7 @@ class BleService extends ChangeNotifier {
   bool _isConnected = false;
   bool _isConnecting = false;
   bool _isScanning = false;
+  bool _isSyncing = false;
 
   BluetoothCharacteristic? _charFF02;
   BluetoothCharacteristic? _charFF03;
@@ -26,15 +28,62 @@ class BleService extends ChangeNotifier {
   final List<StreamSubscription> _subscriptions = [];
   final List<DiscoveredDevice> _discoveredDevices = [];
   StreamSubscription? _scanResultsSub;
+  Timer? _periodicSyncTimer;
+
+  String? _lastDeviceMac;
+  String? _lastDeviceName;
+
+  BleService() {
+    _loadPersistedData();
+  }
 
   // Getters
   BluetoothDevice? get device => _device;
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
   bool get isScanning => _isScanning;
+  bool get isSyncing => _isSyncing;
   WatchTelemetry get telemetry => _telemetry;
   List<LogEntry> get logs => List.unmodifiable(_logs);
   List<DiscoveredDevice> get discoveredDevices => List.unmodifiable(_discoveredDevices);
+  String? get lastDeviceMac => _lastDeviceMac;
+  String? get lastDeviceName => _lastDeviceName;
+
+  Future<void> _loadPersistedData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _lastDeviceMac = prefs.getString('last_device_mac');
+      _lastDeviceName = prefs.getString('last_device_name');
+      final cachedTel = prefs.getString('cached_telemetry');
+      if (cachedTel != null) {
+        _telemetry = WatchTelemetry.fromJson(cachedTel);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[BleService] Error loading persisted data: $e');
+    }
+  }
+
+  Future<void> _saveTelemetry() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_telemetry', _telemetry.toJson());
+    } catch (e) {
+      debugPrint('[BleService] Error saving telemetry: $e');
+    }
+  }
+
+  Future<void> _saveLastDevice(String mac, String name) async {
+    try {
+      _lastDeviceMac = mac;
+      _lastDeviceName = name;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_device_mac', mac);
+      await prefs.setString('last_device_name', name);
+    } catch (e) {
+      debugPrint('[BleService] Error saving last device: $e');
+    }
+  }
 
   void clearLogs() {
     _logs.clear();
@@ -148,23 +197,14 @@ class BleService extends ChangeNotifier {
     await _scanResultsSub?.cancel();
     _scanResultsSub = FlutterBluePlus.scanResults.listen((results) {
       for (final r in results) {
-        final existingIdx = _discoveredDevices.indexWhere(
-          (d) => d.mac.toUpperCase() == r.device.remoteId.str.toUpperCase(),
-        );
-        final item = DiscoveredDevice.fromScanResult(r);
+        final d = DiscoveredDevice.fromScanResult(r);
+        final existingIdx = _discoveredDevices.indexWhere((item) => item.mac == d.mac);
         if (existingIdx >= 0) {
-          _discoveredDevices[existingIdx] = item;
+          _discoveredDevices[existingIdx] = d;
         } else {
-          _discoveredDevices.add(item);
+          _discoveredDevices.add(d);
         }
       }
-
-      // Sort DIZO smartwatches first, then by signal strength
-      _discoveredDevices.sort((a, b) {
-        if (a.isDizo && !b.isDizo) return -1;
-        if (!a.isDizo && b.isDizo) return 1;
-        return b.rssi.compareTo(a.rssi);
-      });
       notifyListeners();
     });
 
@@ -312,6 +352,7 @@ class BleService extends ChangeNotifier {
       await _charFF03!.setNotifyValue(true);
       final ff03Sub = _charFF03!.onValueReceived.listen((value) {
         log('FF03 ← ${_hex(value)}', type: LogType.data);
+        _decodeFF03(value);
       });
       _subscriptions.add(ff03Sub);
       log('FF03 notification stream active ✓', type: LogType.success);
@@ -337,15 +378,24 @@ class BleService extends ChangeNotifier {
 
       _isConnected = true;
       _isConnecting = false;
+      final devName = device.platformName.isNotEmpty ? device.platformName : 'DIZO Watch D';
+      await _saveLastDevice(device.remoteId.str, devName);
       notifyListeners();
 
       // Maintain active session with the watch firmware
       log('Authenticating session with watch...');
       await writeFF02(HtsmartProtocol.buildLoginPacket(), 'Session Auth');
 
-      // Auto time sync on connection
-      log('Auto-synchronizing watch time...');
-      await syncTime();
+      // Auto-synchronize all metrics immediately upon connection
+      await syncAll(isAuto: true);
+
+      // Start periodic auto-refresh timer (every 60 seconds while connected)
+      _periodicSyncTimer?.cancel();
+      _periodicSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+        if (_isConnected && !_isSyncing) {
+          syncAll(isAuto: true);
+        }
+      });
     } catch (e) {
       log('Connection failed: $e', type: LogType.error);
       _isConnected = false;
@@ -363,6 +413,8 @@ class BleService extends ChangeNotifier {
   void _onDisconnected() {
     _scanResultsSub?.cancel();
     _scanResultsSub = null;
+    _periodicSyncTimer?.cancel();
+    _periodicSyncTimer = null;
     for (final sub in _subscriptions) {
       sub.cancel();
     }
@@ -370,20 +422,35 @@ class BleService extends ChangeNotifier {
 
     _isConnected = false;
     _isConnecting = false;
+    _isSyncing = false;
     _device = null;
     _charFF02 = null;
     _charFF03 = null;
     _charFEA1 = null;
-    _telemetry = const WatchTelemetry();
+    // Retain _telemetry cache so health metrics remain visible on the dashboard!
     notifyListeners();
+  }
+
+  void _decodeFF03(List<int> val) {
+    if (val.length >= 8 && val[0] == 0x02 && val[2] == 0x1C) {
+      final isCharging = val[5] == 1;
+      final percent = val[7];
+      if (percent >= 0 && percent <= 100) {
+        _telemetry = _telemetry.copyWith(battery: percent, lastSyncTime: DateTime.now());
+        _saveTelemetry();
+        notifyListeners();
+        log('Battery updated: $percent% ${isCharging ? "(Charging)" : ""}', type: LogType.info);
+      }
+    }
   }
 
   void _decodeFEA1(List<int> data) {
     if (data.length < 2) return;
     final packetType = data[0];
+    bool changed = false;
 
     switch (packetType) {
-      case 0x07: // Activity frame
+      case 0x07: // Activity frame (Steps, Calories, Distance)
         int? steps = _telemetry.steps;
         int? calories = _telemetry.calories;
         double? distance = _telemetry.distanceMeters;
@@ -396,30 +463,36 @@ class BleService extends ChangeNotifier {
           steps: steps,
           calories: calories,
           distanceMeters: distance,
+          lastSyncTime: DateTime.now(),
         );
-        notifyListeners();
+        changed = true;
         break;
 
       case 0x08: // Heart rate
         if (data.length >= 2 && data[1] >= 30 && data[1] <= 220) {
-          _telemetry = _telemetry.copyWith(heartRate: data[1]);
-          notifyListeners();
+          _telemetry = _telemetry.copyWith(heartRate: data[1], lastSyncTime: DateTime.now());
+          changed = true;
         }
         break;
 
       case 0x05: // Battery
         if (data.length >= 2 && data[1] <= 100) {
-          _telemetry = _telemetry.copyWith(battery: data[1]);
-          notifyListeners();
+          _telemetry = _telemetry.copyWith(battery: data[1], lastSyncTime: DateTime.now());
+          changed = true;
         }
         break;
 
       case 0x0A: // SpO2
         if (data.length >= 3 && data[2] >= 80 && data[2] <= 100) {
-          _telemetry = _telemetry.copyWith(spo2: data[2]);
-          notifyListeners();
+          _telemetry = _telemetry.copyWith(spo2: data[2], lastSyncTime: DateTime.now());
+          changed = true;
         }
         break;
+    }
+
+    if (changed) {
+      _saveTelemetry();
+      notifyListeners();
     }
   }
 
@@ -442,9 +515,47 @@ class BleService extends ChangeNotifier {
     }
   }
 
+  /// Unified synchronization of all telemetry (time, battery, steps, heart rate, sleep)
+  Future<void> syncAll({bool isAuto = false}) async {
+    if (!_isConnected || _isSyncing) return;
+    _isSyncing = true;
+    notifyListeners();
+
+    try {
+      log(isAuto ? 'Auto-refreshing metrics...' : 'Synchronizing all watch data...', type: LogType.info);
+
+      // 1. Time sync
+      await syncTime();
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // 2. Battery query
+      await queryBattery();
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // 3. Activity / Steps sync
+      await syncSteps();
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // 4. Health sync (HR & SpO2)
+      await syncHealth();
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // 5. Sleep sync
+      await syncSleep();
+
+      _telemetry = _telemetry.copyWith(lastSyncTime: DateTime.now());
+      await _saveTelemetry();
+      log('All metrics updated ✓', type: LogType.success);
+    } catch (e) {
+      log('Sync error: $e', type: LogType.error);
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> syncTime() async {
     final now = DateTime.now();
-    log('Building HTSmart time synchronization packet...');
     final packet = HtsmartProtocol.buildTimeSyncPacket(now, seq: 1);
     await writeFF02(packet, 'Time Sync (HTSmart)');
   }
@@ -455,7 +566,7 @@ class BleService extends ChangeNotifier {
 
   Future<void> syncHealth() async {
     await writeFF02([0x03, 0x03], '❤️ HR sync');
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 250));
     await writeFF02([0x03, 0x04], '🩸 SpO2 sync');
   }
 
@@ -463,27 +574,15 @@ class BleService extends ChangeNotifier {
     await writeFF02([0x03, 0x02], '😴 Sleep sync');
   }
 
-  Future<void> readBattery() async {
-    try {
-      final services = await _device?.discoverServices();
-      final secService = services?.firstWhere(
-        (s) => s.uuid == DizoUuids.serviceSecondary,
-      );
-      final charFFD2 = secService?.characteristics.firstWhere(
-        (c) => c.uuid == DizoUuids.charFFD2,
-      );
-      if (charFFD2 != null) {
-        final value = await charFFD2.read();
-        log('FFD2 ← ${_hex(value)}', type: LogType.data);
-        if (value.isNotEmpty) {
-          _telemetry = _telemetry.copyWith(battery: value[0]);
-          notifyListeners();
-          log('Battery: ${value[0]}%', type: LogType.info);
-        }
-      }
-    } catch (e) {
-      log('Battery query failed: $e', type: LogType.error);
-    }
+  Future<void> queryBattery() async {
+    final packet = HtsmartProtocol.buildBatteryQueryPacket();
+    await writeFF02(packet, 'Battery Query');
+  }
+
+  Future<void> findWatch() async {
+    log('Triggering watch vibration...');
+    final packet = HtsmartProtocol.buildFindWatchPacket();
+    await writeFF02(packet, 'Find Watch (Vibrate)');
   }
 
   /// Switches active dial slot on watch (e.g. 4 for custom dial)
@@ -495,6 +594,7 @@ class BleService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _periodicSyncTimer?.cancel();
     for (final sub in _subscriptions) {
       sub.cancel();
     }

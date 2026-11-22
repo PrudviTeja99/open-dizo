@@ -81,21 +81,21 @@ class HtsmartProtocol {
     );
   }
 
-  /// Builds a Battery / Status query packet (Cmd 0x02, Key 0x52)
+  /// Builds a Battery Status query packet (Cmd 0x02, Key 0x1B)
   static List<int> buildBatteryQueryPacket({int seq = 1}) {
     return buildPacket(
       cmdId: 0x02,
-      keyId: 0x52,
+      keyId: 0x1B,
       payload: const [],
       seq: seq,
     );
   }
 
-  /// Builds a Find Watch vibration trigger packet (Cmd 0x02, Key 0x1B)
+  /// Builds a Find Watch vibration trigger packet (Cmd 0x02, Key 0x3B)
   static List<int> buildFindWatchPacket({int seq = 1}) {
     return buildPacket(
       cmdId: 0x02,
-      keyId: 0x1B,
+      keyId: 0x3B,
       payload: const [],
       seq: seq,
     );
