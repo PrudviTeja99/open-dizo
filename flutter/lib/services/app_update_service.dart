@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 class AppReleaseInfo {
@@ -24,7 +27,24 @@ class AppReleaseInfo {
 }
 
 class AppUpdateService {
-  static const String currentVersion = '1.1.1';
+  static String _cachedVersion = '1.1.5';
+
+  /// Returns the currently installed application version (e.g. "1.1.5")
+  static String get currentVersion => _cachedVersion;
+
+  /// Loads current version dynamically from platform package info
+  static Future<String> getInstalledVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (info.version.isNotEmpty) {
+        _cachedVersion = info.version;
+      }
+    } catch (e) {
+      debugPrint('[AppUpdateService] Failed to load package info: $e');
+    }
+    return _cachedVersion;
+  }
+
   static const String repoOwner = 'PrudviTeja99';
   static const String repoName = 'open-dizo';
   static const MethodChannel _channel = MethodChannel('bpt.studiohq.open_dizo/updater');
@@ -34,6 +54,8 @@ class AppUpdateService {
     final client = HttpClient();
     client.connectionTimeout = const Duration(seconds: 10);
     try {
+      await getInstalledVersion();
+
       final uri = Uri.parse('https://api.github.com/repos/$repoOwner/$repoName/releases/latest');
       final request = await client.getUrl(uri);
       request.headers.set('User-Agent', 'Open-Dizo-App');
@@ -70,7 +92,7 @@ class AppUpdateService {
       final fileName = apkAsset['name'] as String? ?? 'open-dizo.apk';
       final sizeBytes = apkAsset['size'] as int? ?? 0;
 
-      final isNewer = _isVersionNewer(tagName, currentVersion);
+      final isNewer = _isVersionNewer(tagName, _cachedVersion);
 
       return AppReleaseInfo(
         tagName: tagName,
@@ -150,7 +172,10 @@ class AppUpdateService {
     }
   }
 
-  /// Compares version string like "v1.1.1" vs "1.1.0"
+  @visibleForTesting
+  static bool isVersionNewer(String remoteTag, String localVersion) => _isVersionNewer(remoteTag, localVersion);
+
+  /// Compares version string like "v1.1.5" vs "1.1.4"
   static bool _isVersionNewer(String remoteTag, String localVersion) {
     final cleanRemote = remoteTag.replaceAll(RegExp(r'[^0-9.]'), '');
     final cleanLocal = localVersion.replaceAll(RegExp(r'[^0-9.]'), '');
@@ -158,7 +183,8 @@ class AppUpdateService {
     final rParts = cleanRemote.split('.').map((e) => int.tryParse(e) ?? 0).toList();
     final lParts = cleanLocal.split('.').map((e) => int.tryParse(e) ?? 0).toList();
 
-    for (int i = 0; i < 3; i++) {
+    final maxLen = math.max(rParts.length, lParts.length);
+    for (int i = 0; i < maxLen; i++) {
       final r = i < rParts.length ? rParts[i] : 0;
       final l = i < lParts.length ? lParts[i] : 0;
       if (r > l) return true;
