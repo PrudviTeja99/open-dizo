@@ -41,12 +41,12 @@ def configure_android():
 
     groovy_injection = """
 subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty("android")) {
-            project.android {
+    plugins.withId("com.android.library") {
+        try {
+            android {
                 compileSdkVersion 36
             }
-        }
+        } catch (Exception e) {}
     }
     tasks.matching { it.name.contains("AarMetadata") }.configureEach {
         enabled = false
@@ -56,21 +56,21 @@ subprojects {
 
     kts_injection = """
 subprojects {
-    afterEvaluate {
-        val android = project.extensions.findByName("android")
-        if (android != null) {
-            for (m in android.javaClass.methods) {
-                if (m.name == "compileSdkVersion" && m.parameterTypes.size == 1) {
-                    try {
+    plugins.withId("com.android.library") {
+        try {
+            val android = extensions.findByName("android")
+            if (android != null) {
+                for (m in android.javaClass.methods) {
+                    if (m.name == "compileSdkVersion" && m.parameterTypes.size == 1) {
                         if (m.parameterTypes[0] == java.lang.Integer.TYPE) {
                             m.invoke(android, 36)
                         } else if (m.parameterTypes[0] == String::class.java) {
                             m.invoke(android, "android-36")
                         }
-                    } catch (e: Exception) {}
+                    }
                 }
             }
-        }
+        } catch (e: Exception) {}
     }
     tasks.matching { it.name.contains("AarMetadata") }.configureEach {
         this.setEnabled(false)
