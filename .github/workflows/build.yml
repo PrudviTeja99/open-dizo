@@ -71,18 +71,7 @@ jobs:
 
           # Force all plugin subprojects to compile with SDK 36 in android/build.gradle
           if [ -f "android/build.gradle" ]; then
-            cat << 'EOF' >> android/build.gradle
-
-subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty('android')) {
-            project.android {
-                compileSdkVersion 36
-            }
-        }
-    }
-}
-EOF
+            printf '\nsubprojects {\n    afterEvaluate { project ->\n        if (project.hasProperty("android")) {\n            project.android {\n                compileSdkVersion 36\n            }\n        }\n    }\n}\n' >> android/build.gradle
           fi
 
       - name: Build Android Release APK
