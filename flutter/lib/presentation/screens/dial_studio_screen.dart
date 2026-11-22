@@ -38,6 +38,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
   );
 
   bool _isLoading = true;
+  bool _isDraggingClock = false;
 
   final List<Color> _availableColors = const [
     Colors.white,
@@ -319,13 +320,17 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
           children: [
             Expanded(
               child: ListView(
+                physics: _isDraggingClock
+                    ? const NeverScrollableScrollPhysics()
+                    : const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 children: [
-                  // Live Watch Frame Preview
+                  // Live Watch Frame Preview (Hold to vibrate and drag)
                   WatchCanvasPreview(
                     wallpaperFile: currentWallpaperFile,
                     clockStyle: _clockStyle,
                     scale: 0.95,
+                    onDragStateChanged: (dragging) => setState(() => _isDraggingClock = dragging),
                     onClockDragged: (newX, newY) => setState(() {
                       _clockStyle = _clockStyle.copyWith(
                         position: ClockPosition('Custom', newX, newY, isCustom: true),
@@ -524,11 +529,13 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.touch_app_outlined, size: 14, color: Colors.grey[500]),
+                        Icon(Icons.touch_app_outlined, size: 14, color: AppTheme.accent),
                         const SizedBox(width: 4),
-                        Text(
-                          'Drag the clock in preview above to position freely.',
-                          style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                        Expanded(
+                          child: Text(
+                            'Hold the clock until it vibrates, then drag freely anywhere.',
+                            style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                          ),
                         ),
                       ],
                     ),

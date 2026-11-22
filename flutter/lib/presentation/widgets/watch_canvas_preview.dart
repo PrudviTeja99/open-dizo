@@ -1,13 +1,17 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/clock_style.dart';
 
 /// Renders a realistic DIZO Watch D frame (240x286 display with bezel) and live clock overlays
-class WatchCanvasPreview extends StatelessWidget {
+/// Supports long-press hold to activate drag mode with vibration feedback and scroll isolation
+class WatchCanvasPreview extends StatefulWidget {
   final File? wallpaperFile;
   final ClockStyle clockStyle;
   final double scale;
   final void Function(int newX, int newY)? onClockDragged;
+  final void Function(bool isDragging)? onDragStateChanged;
 
   const WatchCanvasPreview({
     super.key,
@@ -15,7 +19,17 @@ class WatchCanvasPreview extends StatelessWidget {
     required this.clockStyle,
     this.scale = 1.0,
     this.onClockDragged,
+    this.onDragStateChanged,
   });
+
+  @override
+  State<WatchCanvasPreview> createState() => _WatchCanvasPreviewState();
+}
+
+class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
+  bool _isDragging = false;
+  int _dragStartX = 0;
+  int _dragStartY = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +38,7 @@ class WatchCanvasPreview extends StatelessWidget {
 
     return Center(
       child: Transform.scale(
-        scale: scale,
+        scale: widget.scale,
         child: Container(
           width: displayW + 36,
           height: displayH + 36,
@@ -32,11 +46,17 @@ class WatchCanvasPreview extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFF16161E),
             borderRadius: BorderRadius.circular(42),
-            border: Border.all(color: const Color(0xFF323246), width: 3),
+            border: Border.all(
+              color: _isDragging ? AppTheme.accent : const Color(0xFF323246),
+              width: _isDragging ? 3.5 : 3,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.6),
-                blurRadius: 24,
+                color: _isDragging
+                    ? AppTheme.accent.withValues(alpha: 0.3)
+                    : Colors.black.withValues(alpha: 0.6),
+                blurRadius: _isDragging ? 30 : 24,
+                spreadRadius: _isDragging ? 2 : 0,
                 offset: const Offset(0, 10),
               ),
             ],
@@ -51,9 +71,9 @@ class WatchCanvasPreview extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   // Wallpaper Image Layer
-                  if (wallpaperFile != null && wallpaperFile!.existsSync())
+                  if (widget.wallpaperFile != null && widget.wallpaperFile!.existsSync())
                     Image.file(
-                      wallpaperFile!,
+                      widget.wallpaperFile!,
                       fit: BoxFit.cover,
                       width: displayW,
                       height: displayH,
@@ -76,8 +96,41 @@ class WatchCanvasPreview extends StatelessWidget {
                       ),
                     ),
 
+                  // Floating Moving Badge indicator when dragging
+                  if (_isDragging)
+                    Positioned(
+                      top: 10,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppTheme.accent, width: 1.2),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.open_with, size: 12, color: AppTheme.accent),
+                              SizedBox(width: 4),
+                              Text(
+                                'Moving Clock',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
                   // Clock & Complications Overlay
-                  if (clockStyle.isVisible)
+                  if (widget.clockStyle.isVisible)
                     _buildClockOverlay(displayW, displayH),
                 ],
               ),
@@ -89,7 +142,7 @@ class WatchCanvasPreview extends StatelessWidget {
   }
 
   Widget _buildClockOverlay(double width, double height) {
-    final textColor = clockStyle.textColor;
+    final textColor = widget.clockStyle.textColor;
     final now = DateTime.now();
     final hourStr = now.hour.toString().padLeft(2, '0');
     final minStr = now.minute.toString().padLeft(2, '0');
@@ -97,26 +150,91 @@ class WatchCanvasPreview extends StatelessWidget {
     final dateStr = '$dayStr ${now.day}';
 
     final clockContent = GestureDetector(
-      onPanUpdate: onClockDragged != null
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (widget.onClockDragged != null) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('💡 Hold clock for a moment to vibrate, then drag anywhere.'),
+              duration: Duration(milliseconds: 1800),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      },
+      onLongPressStart: widget.onClockDragged != null
           ? (details) {
-              final newX = (clockStyle.position.x + details.delta.dx.round()).clamp(10, 150);
-              final newY = (clockStyle.position.y + details.delta.dy.round()).clamp(8, 210);
-              onClockDragged!(newX, newY);
+              HapticFeedback.heavyImpact();
+              HapticFeedback.vibrate();
+              setState(() {
+                _isDragging = true;
+                _dragStartX = widget.clockStyle.position.x;
+                _dragStartY = widget.clockStyle.position.y;
+              });
+              widget.onDragStateChanged?.call(true);
             }
           : null,
-      child: Container(
+      onLongPressMoveUpdate: widget.onClockDragged != null
+          ? (details) {
+              if (!_isDragging) return;
+              final double dx = details.offsetFromOrigin.dx / widget.scale;
+              final double dy = details.offsetFromOrigin.dy / widget.scale;
+              final int newX = (_dragStartX + dx.round()).clamp(10, 150);
+              final int newY = (_dragStartY + dy.round()).clamp(8, 210);
+              widget.onClockDragged!(newX, newY);
+            }
+          : null,
+      onLongPressEnd: widget.onClockDragged != null
+          ? (details) {
+              if (_isDragging) {
+                HapticFeedback.mediumImpact();
+                setState(() {
+                  _isDragging = false;
+                });
+                widget.onDragStateChanged?.call(false);
+              }
+            }
+          : null,
+      onLongPressCancel: widget.onClockDragged != null
+          ? () {
+              if (_isDragging) {
+                setState(() {
+                  _isDragging = false;
+                });
+                widget.onDragStateChanged?.call(false);
+              }
+            }
+          : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: onClockDragged != null
-            ? BoxDecoration(
-                border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
-                borderRadius: BorderRadius.circular(10),
-              )
-            : null,
+        decoration: BoxDecoration(
+          color: _isDragging
+              ? AppTheme.accent.withValues(alpha: 0.18)
+              : Colors.transparent,
+          border: Border.all(
+            color: _isDragging
+                ? AppTheme.accent
+                : Colors.white.withValues(alpha: 0.15),
+            width: _isDragging ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: _isDragging
+              ? [
+                  BoxShadow(
+                    color: AppTheme.accent.withValues(alpha: 0.5),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: clockStyle.position.label == 'Left'
+          crossAxisAlignment: widget.clockStyle.position.label == 'Left'
               ? CrossAxisAlignment.start
-              : (clockStyle.position.label == 'Right'
+              : (widget.clockStyle.position.label == 'Right'
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.center),
           children: [
@@ -125,7 +243,7 @@ class WatchCanvasPreview extends StatelessWidget {
               '$hourStr:$minStr',
               style: TextStyle(
                 fontFamily: 'monospace',
-                fontSize: clockStyle.size.fontSize,
+                fontSize: widget.clockStyle.size.fontSize,
                 fontWeight: FontWeight.w900,
                 color: textColor,
                 shadows: [
@@ -139,11 +257,11 @@ class WatchCanvasPreview extends StatelessWidget {
             ),
 
             // Date Complication
-            if (clockStyle.showDate)
+            if (widget.clockStyle.showDate)
               Text(
                 dateStr,
                 style: TextStyle(
-                  fontSize: (clockStyle.size.fontSize * 0.35).clamp(10.0, 16.0),
+                  fontSize: (widget.clockStyle.size.fontSize * 0.35).clamp(10.0, 16.0),
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.1,
                   color: textColor.withValues(alpha: 0.9),
@@ -159,15 +277,15 @@ class WatchCanvasPreview extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (clockStyle.showBattery) ...[
+                if (widget.clockStyle.showBattery) ...[
                   Icon(Icons.battery_std, size: 12, color: textColor.withValues(alpha: 0.8)),
                   const SizedBox(width: 4),
                 ],
-                if (clockStyle.showSteps) ...[
+                if (widget.clockStyle.showSteps) ...[
                   Icon(Icons.directions_walk, size: 12, color: textColor.withValues(alpha: 0.8)),
                   const SizedBox(width: 4),
                 ],
-                if (clockStyle.showHeartRate) ...[
+                if (widget.clockStyle.showHeartRate) ...[
                   Icon(Icons.favorite, size: 12, color: Colors.redAccent.withValues(alpha: 0.8)),
                 ],
               ],
@@ -177,18 +295,18 @@ class WatchCanvasPreview extends StatelessWidget {
       ),
     );
 
-    // If Custom Position, use Positioned coordinates
-    if (clockStyle.position.isCustom) {
+    // If Custom Position or Dragging, use exact Positioned coordinates
+    if (widget.clockStyle.position.isCustom || _isDragging) {
       return Positioned(
-        left: clockStyle.position.x.toDouble().clamp(0.0, 160.0),
-        top: clockStyle.position.y.toDouble().clamp(0.0, 220.0),
+        left: widget.clockStyle.position.x.toDouble().clamp(0.0, 160.0),
+        top: widget.clockStyle.position.y.toDouble().clamp(0.0, 220.0),
         child: clockContent,
       );
     }
 
     // Otherwise align by Preset
     Alignment alignment;
-    switch (clockStyle.position.label) {
+    switch (widget.clockStyle.position.label) {
       case 'Center':
         alignment = Alignment.center;
         break;
