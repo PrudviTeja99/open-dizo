@@ -1,16 +1,17 @@
 name: dizo_watch_sync
 description: Open BLE companion and custom watch face studio for DIZO Watch D.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
-  sdk: '>=3.1.0 <4.0.0'
+  sdk: '>=3.4.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_blue_plus: ^1.35.5
   permission_handler: ^11.3.1
+  mobile_scanner: ^6.0.4
   intl: ^0.19.0
   image: ^4.3.0
   file_picker: ^8.1.6

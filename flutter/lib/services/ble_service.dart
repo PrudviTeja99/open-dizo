@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
 
 import '../core/constants/dizo_uuids.dart';
+import '../models/discovered_device.dart';
 import '../models/log_entry.dart';
 import '../models/watch_telemetry.dart';
 import 'htsmart_protocol.dart';
@@ -23,6 +24,8 @@ class BleService extends ChangeNotifier {
   WatchTelemetry _telemetry = const WatchTelemetry();
   final List<LogEntry> _logs = [];
   final List<StreamSubscription> _subscriptions = [];
+  final List<DiscoveredDevice> _discoveredDevices = [];
+  StreamSubscription? _scanResultsSub;
 
   // Getters
   BluetoothDevice? get device => _device;
@@ -31,6 +34,7 @@ class BleService extends ChangeNotifier {
   bool get isScanning => _isScanning;
   WatchTelemetry get telemetry => _telemetry;
   List<LogEntry> get logs => List.unmodifiable(_logs);
+  List<DiscoveredDevice> get discoveredDevices => List.unmodifiable(_discoveredDevices);
 
   void clearLogs() {
     _logs.clear();
@@ -113,6 +117,144 @@ class BleService extends ChangeNotifier {
     if (!found) {
       log('DIZO Watch D not found. Ensure it is nearby and not bonded to another host.',
           type: LogType.error);
+    }
+  }
+
+  /// Scans for all nearby BLE devices and updates `discoveredDevices` list in real-time.
+  Future<void> startDiscoveryScan({Duration timeout = const Duration(seconds: 15)}) async {
+    if (!await requestPermissions()) return;
+
+    final adapterState = await FlutterBluePlus.adapterState.first;
+    if (adapterState != BluetoothAdapterState.on) {
+      log('Bluetooth is OFF — please enable it', type: LogType.error);
+      await FlutterBluePlus.turnOn();
+      return;
+    }
+
+    _discoveredDevices.clear();
+    _isScanning = true;
+    notifyListeners();
+    log('Scanning for nearby smartwatches...', type: LogType.info);
+
+    await _scanResultsSub?.cancel();
+    _scanResultsSub = FlutterBluePlus.scanResults.listen((results) {
+      for (final r in results) {
+        final existingIdx = _discoveredDevices.indexWhere(
+          (d) => d.mac.toUpperCase() == r.device.remoteId.str.toUpperCase(),
+        );
+        final item = DiscoveredDevice.fromScanResult(r);
+        if (existingIdx >= 0) {
+          _discoveredDevices[existingIdx] = item;
+        } else {
+          _discoveredDevices.add(item);
+        }
+      }
+
+      // Sort DIZO smartwatches first, then by signal strength
+      _discoveredDevices.sort((a, b) {
+        if (a.isDizo && !b.isDizo) return -1;
+        if (!a.isDizo && b.isDizo) return 1;
+        return b.rssi.compareTo(a.rssi);
+      });
+      notifyListeners();
+    });
+
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: timeout,
+        androidScanMode: AndroidScanMode.lowLatency,
+      );
+    } catch (e) {
+      log('Error during scan: $e', type: LogType.error);
+    } finally {
+      _isScanning = false;
+      notifyListeners();
+    }
+  }
+
+  /// Stops ongoing discovery scan
+  Future<void> stopDiscoveryScan() async {
+    await FlutterBluePlus.stopScan();
+    await _scanResultsSub?.cancel();
+    _scanResultsSub = null;
+    _isScanning = false;
+    notifyListeners();
+  }
+
+  /// Connects directly to a specific watch MAC address (e.g. from QR code scan or manual entry).
+  Future<bool> connectByMacAddress(String macAddress, {String? displayName}) async {
+    if (_isConnected) {
+      disconnect();
+    }
+
+    if (!await requestPermissions()) return false;
+
+    final adapterState = await FlutterBluePlus.adapterState.first;
+    if (adapterState != BluetoothAdapterState.on) {
+      log('Bluetooth is OFF — please enable it', type: LogType.error);
+      await FlutterBluePlus.turnOn();
+      return false;
+    }
+
+    await stopDiscoveryScan();
+
+    final cleanMac = macAddress.replaceAll('-', ':').toUpperCase().trim();
+    final nameLabel = displayName != null && displayName.isNotEmpty ? displayName : 'Watch';
+    log('Targeting $nameLabel at MAC: $cleanMac', type: LogType.info);
+
+    _isConnecting = true;
+    notifyListeners();
+
+    // 1. Direct connect attempt using remoteId
+    try {
+      final targetDevice = BluetoothDevice.fromId(cleanMac);
+      log('Connecting directly to $cleanMac...');
+      await connectToDevice(targetDevice);
+      if (_isConnected) {
+        return true;
+      }
+    } catch (e) {
+      log('Direct connect attempt note: $e, falling back to targeted scan...', type: LogType.info);
+    }
+
+    // 2. Targeted scan fallback if direct connection failed
+    _isScanning = true;
+    notifyListeners();
+    log('Searching specifically for $cleanMac...');
+
+    BluetoothDevice? foundDevice;
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 8),
+        androidScanMode: AndroidScanMode.lowLatency,
+      );
+
+      await for (final results in FlutterBluePlus.scanResults) {
+        for (final r in results) {
+          if (r.device.remoteId.str.toUpperCase() == cleanMac) {
+            foundDevice = r.device;
+            await FlutterBluePlus.stopScan();
+            break;
+          }
+        }
+        if (foundDevice != null) break;
+      }
+    } catch (e) {
+      log('Targeted scan error: $e', type: LogType.error);
+    } finally {
+      _isScanning = false;
+      notifyListeners();
+    }
+
+    if (foundDevice != null) {
+      log('Found target watch! Connecting...', type: LogType.success);
+      await connectToDevice(foundDevice);
+      return _isConnected;
+    } else {
+      _isConnecting = false;
+      notifyListeners();
+      log('Watch $cleanMac not found nearby. Make sure it is powered on.', type: LogType.error);
+      return false;
     }
   }
 
@@ -199,6 +341,8 @@ class BleService extends ChangeNotifier {
   }
 
   void _onDisconnected() {
+    _scanResultsSub?.cancel();
+    _scanResultsSub = null;
     for (final sub in _subscriptions) {
       sub.cancel();
     }

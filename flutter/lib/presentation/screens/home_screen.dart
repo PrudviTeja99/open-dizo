@@ -10,6 +10,9 @@ import '../widgets/actions_card.dart';
 import '../widgets/telemetry_card.dart';
 import '../widgets/ble_log_card.dart';
 import 'dial_studio_screen.dart';
+import 'device_discovery_screen.dart';
+import 'qr_scanner_screen.dart';
+import '../dialogs/connect_device_modal.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -83,26 +86,111 @@ class _HomeScreenState extends State<HomeScreen> {
             StatusHeader(bleService: _bleService),
             const SizedBox(height: 20),
 
-            // Connect / Disconnect Action Button
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton.icon(
-                onPressed: isBusy ? null : () => _bleService.scanAndConnect(),
-                icon: Icon(isConnected ? Icons.link_off : Icons.bluetooth_searching),
-                label: Text(
-                  isConnected ? 'Disconnect' : 'Connect to Watch',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            // Connect / Disconnect Action Section
+            if (isConnected)
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: isBusy ? null : () => _bleService.disconnect(),
+                  icon: const Icon(Icons.link_off),
+                  label: const Text(
+                    'Disconnect Watch',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey[850],
+                    foregroundColor: Colors.redAccent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isConnected ? Colors.grey[800] : AppTheme.accent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+              )
+            else ...[
+              // Primary Connect Button
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: isBusy
+                      ? null
+                      : () => ConnectDeviceModal.show(context, _bleService),
+                  icon: const Icon(Icons.add_link),
+                  label: const Text(
+                    'Connect New Watch',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                 ),
               ),
-            ),
+              const SizedBox(height: 10),
+
+              // Quick Actions Row: Scan QR | Search Nearby
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: const BorderSide(color: Colors.cyanAccent),
+                      ),
+                      onPressed: isBusy
+                          ? null
+                          : () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      QrScannerScreen(bleService: _bleService),
+                                ),
+                              );
+                            },
+                      icon: const Icon(Icons.qr_code_scanner, size: 18, color: Colors.cyanAccent),
+                      label: const Text(
+                        'Scan QR',
+                        style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: const BorderSide(color: Colors.blueAccent),
+                      ),
+                      onPressed: isBusy
+                          ? null
+                          : () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      DeviceDiscoveryScreen(bleService: _bleService),
+                                ),
+                              );
+                            },
+                      icon: const Icon(Icons.bluetooth_searching, size: 18, color: Colors.blueAccent),
+                      label: const Text(
+                        'Search Devices',
+                        style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
 
             // Time Synchronization Card
