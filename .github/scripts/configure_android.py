@@ -40,40 +40,50 @@ def configure_android():
     root_gradle_kts = os.path.join(base_dir, "build.gradle.kts")
 
     groovy_injection = """
-subprojects {
-    plugins.withId("com.android.library") {
-        try {
-            android {
-                compileSdkVersion 36
-            }
-        } catch (Exception e) {}
+subprojects { project ->
+    def configureAndroid = {
+        if (project.hasProperty("android")) {
+            try {
+                project.android {
+                    compileSdkVersion 36
+                }
+            } catch (Exception e) {}
+        }
     }
-    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-        enabled = false
+    if (project.state.executed) {
+        configureAndroid()
+    } else {
+        project.afterEvaluate {
+            configureAndroid()
+        }
     }
 }
 """
 
     kts_injection = """
 subprojects {
-    plugins.withId("com.android.library") {
-        try {
-            val android = extensions.findByName("android")
-            if (android != null) {
-                for (m in android.javaClass.methods) {
-                    if (m.name == "compileSdkVersion" && m.parameterTypes.size == 1) {
-                        if (m.parameterTypes[0] == java.lang.Integer.TYPE) {
+    val configureAndroid = {
+        val android = project.extensions.findByName("android")
+        if (android != null) {
+            for (m in android.javaClass.methods) {
+                if ((m.name == "compileSdkVersion" || m.name == "setCompileSdkVersion" || m.name == "setCompileSdk") && m.parameterTypes.size == 1) {
+                    try {
+                        if (m.parameterTypes[0] == java.lang.Integer.TYPE || m.parameterTypes[0] == java.lang.Integer::class.java) {
                             m.invoke(android, 36)
                         } else if (m.parameterTypes[0] == String::class.java) {
                             m.invoke(android, "android-36")
                         }
-                    }
+                    } catch (e: Exception) {}
                 }
             }
-        } catch (e: Exception) {}
+        }
     }
-    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-        this.setEnabled(false)
+    if (project.state.executed) {
+        configureAndroid()
+    } else {
+        project.afterEvaluate {
+            configureAndroid()
+        }
     }
 }
 """
@@ -82,7 +92,7 @@ subprojects {
         print("Injecting into build.gradle...")
         with open(root_gradle_groovy, "r") as f:
             content = f.read()
-        if "AarMetadata" not in content:
+        if "configureAndroid" not in content:
             with open(root_gradle_groovy, "a") as f:
                 f.write("\n" + groovy_injection + "\n")
 
@@ -90,7 +100,7 @@ subprojects {
         print("Injecting into build.gradle.kts...")
         with open(root_gradle_kts, "r") as f:
             content = f.read()
-        if "AarMetadata" not in content:
+        if "configureAndroid" not in content:
             with open(root_gradle_kts, "a") as f:
                 f.write("\n" + kts_injection + "\n")
 
