@@ -504,6 +504,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                                 ),
                                 onSelected: (_) => setState(() {
                                   _clockStyle = _clockStyle.copyWith(position: pos);
+                                  _isDraggingClock = false;
                                 }),
                               ),
                             );
@@ -533,7 +534,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            'Hold the clock until it vibrates, then drag freely anywhere.',
+                            'Hold the clock until it vibrates to select and drag it freely.',
                             style: TextStyle(fontSize: 11, color: Colors.grey[400]),
                           ),
                         ),
