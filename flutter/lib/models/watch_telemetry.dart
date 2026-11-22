@@ -55,8 +55,8 @@ class WatchTelemetry {
   }
 
   int get caloriesKcal {
-    if (calories != null) {
-      return calories! > 1000 ? (calories! / 1000.0).round() : calories!;
+    if (calories != null && calories! > 0) {
+      return calories!;
     }
     if (steps != null && steps! > 0) {
       return (steps! * 0.04).round();

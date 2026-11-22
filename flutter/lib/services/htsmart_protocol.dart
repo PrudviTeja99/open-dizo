@@ -123,6 +123,17 @@ class HtsmartProtocol {
     );
   }
 
+  /// Builds Latest Healthy Data query packet (Cmd 0x05, Key 0x42 / 66)
+  /// Watch responds with Cmd 0x05, Key 0x43 containing latest HR, SpO2, DBP, SBP
+  static List<int> buildLatestHealthyPacket({int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x05,
+      keyId: 0x42,
+      payload: const [],
+      seq: seq,
+    );
+  }
+
   /// Builds Real-Time Health Measurement command packet (Cmd 0x05, Key 0x23)
   /// healthyType bitmask: 1=HR, 2=SpO2, 4=BP, 8=Respiratory, 16=ECG, 32=Temp, 64=Pressure
   static List<int> buildRealTimeHealthPacket({
@@ -165,6 +176,20 @@ class HtsmartProtocol {
     );
   }
 
+  /// Builds standard transport ACK frame (8 bytes) acknowledging sequence ID
+  static List<int> buildTransportAckPacket(int seq, {bool isError = false}) {
+    return [
+      0xAB,
+      isError ? 0x30 : 0x10,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      (seq >> 8) & 0xFF,
+      seq & 0xFF,
+    ];
+  }
+
   /// Builds Watch Configuration Query packet (Cmd 0x02, Key 0x20)
   static List<int> buildConfigQueryPacket({int seq = 1}) {
     return buildPacket(
@@ -184,31 +209,51 @@ class HtsmartProtocol {
     List<int>? rawConfig,
     int seq = 1,
   }) {
-    final payload = (rawConfig != null && rawConfig.length >= 38)
-        ? List<int>.from(rawConfig)
-        : List<int>.filled(38, 0);
+    List<int> payload;
+    if (rawConfig != null && rawConfig.isNotEmpty) {
+      payload = List<int>.filled(38, 0);
+      for (int i = 0; i < rawConfig.length && i < 38; i++) {
+        payload[i] = rawConfig[i];
+      }
+    } else {
+      payload = List<int>.filled(38, 0);
 
-    // Timeout duration options [0..6]: current selected at offset 0
-    final durationCount = payload[1] > 0 ? payload[1] : 3;
-    payload[0] = timeoutSeconds.clamp(5, 30);
-    payload[1] = durationCount;
-    if (payload[2] == 0) payload[2] = 5;
-    if (payload[3] == 0) payload[3] = 10;
-    if (payload[4] == 0) payload[4] = 15;
+      // Default timeout durations: 5s, 10s, 15s
+      payload[0] = timeoutSeconds.clamp(5, 30);
+      payload[1] = 3;
+      payload[2] = 5;
+      payload[3] = 10;
+      payload[4] = 15;
 
-    // Turn wrist lighting duration [7..13]: mandatory structure for watch firmware acceptance
-    if (payload[8] == 0) {
+      // Default turn wrist lighting duration: 5s (presets: 3, 5, 7)
       payload[7] = 5;
       payload[8] = 3;
       payload[9] = 3;
       payload[10] = 5;
       payload[11] = 7;
+
+      // Default brightness options: 5 levels (1, 2, 3, 4, 5)
+      payload[25] = 5;
+      payload[26] = 1;
+      payload[27] = 2;
+      payload[28] = 3;
+      payload[29] = 4;
+      payload[30] = 5;
+
+      // Default vibration options: 3 levels (0, 1, 2)
+      payload[32] = 3;
+      payload[33] = 0;
+      payload[34] = 1;
+      payload[35] = 2;
     }
 
-    // Brightness options [24..30]: current selected at offset 24
+    // Set screen timeout duration at offset 0
+    payload[0] = timeoutSeconds.clamp(5, 30);
+
+    // Set brightness level at offset 24 from the available preset levels at [26..26+count-1]
     final brightCount = payload[25] > 0 ? payload[25] : 5;
-    payload[25] = brightCount;
-    if (payload[26] == 0) {
+    if (payload[25] == 0) {
+      payload[25] = 5;
       payload[26] = 1;
       payload[27] = 2;
       payload[28] = 3;
@@ -218,10 +263,10 @@ class HtsmartProtocol {
     final brightIdx = (brightness - 1).clamp(0, brightCount - 1);
     payload[24] = payload[26 + brightIdx];
 
-    // Vibration options [31..37]: current selected at offset 31
+    // Set vibration level at offset 31 from presets at [33..33+count-1]
     final vibCount = payload[32] > 0 ? payload[32] : 3;
-    payload[32] = vibCount;
-    if (payload[33] == 0 && payload[34] == 0) {
+    if (payload[32] == 0) {
+      payload[32] = 3;
       payload[33] = 0;
       payload[34] = 1;
       payload[35] = 2;

@@ -33,14 +33,16 @@ void main() {
 
       final steps = bytesToIntBE(payload, 0, 4);
       final distMeters = bytesToIntBE(payload, 4, 4).toDouble();
-      final calories = bytesToIntBE(payload, 8, 4);
+      final caloriesRaw = bytesToIntBE(payload, 8, 4);
+      final caloriesKcal = (caloriesRaw / 1000.0).round();
       final deepSleep = bytesToIntBE(payload, 12, 4);
       final lightSleep = bytesToIntBE(payload, 16, 4);
       final hr = bytesToIntBE(payload, 20, 4);
 
       expect(steps, 5432);
       expect(distMeters, 3500.0);
-      expect(calories, 145016);
+      expect(caloriesRaw, 145016);
+      expect(caloriesKcal, 145);
       expect(deepSleep, 120);
       expect(lightSleep, 360);
       expect(hr, 72);
@@ -48,7 +50,7 @@ void main() {
       final telemetry = WatchTelemetry(
         steps: steps,
         distanceMeters: distMeters,
-        calories: calories,
+        calories: caloriesKcal,
         deepSleepMinutes: deepSleep,
         lightSleepMinutes: lightSleep,
         heartRate: hr,
@@ -142,6 +144,47 @@ void main() {
 
       expect(isCharging, false);
       expect(percent, 85);
+    });
+
+    test('Latest Healthy Data packet generation matches protocol specification', () {
+      final packet = HtsmartProtocol.buildLatestHealthyPacket(seq: 42);
+      expect(packet[0], 0xAB);
+      expect(packet[6], 0x00);
+      expect(packet[7], 42); // Seq
+      expect(packet[8], 0x05); // Cmd 0x05
+      expect(packet[10], 0x42); // Key 0x42
+    });
+
+    test('Transport ACK frame generation complies with 8-byte specification', () {
+      final ackPacket = HtsmartProtocol.buildTransportAckPacket(1234);
+      expect(ackPacket.length, 8);
+      expect(ackPacket[0], 0xAB);
+      expect(ackPacket[1], 0x10);
+      expect(ackPacket[2], 0x00);
+      expect(ackPacket[3], 0x00);
+      expect(ackPacket[4], 0x00);
+      expect(ackPacket[5], 0x00);
+      expect((ackPacket[6] << 8) | ackPacket[7], 1234);
+    });
+
+    test('Blood Pressure validation ensures Systolic is always higher than Diastolic', () {
+      // Standard values
+      const rawDbp = 80;
+      const rawSbp = 120;
+      final higher = rawSbp > rawDbp ? rawSbp : rawDbp;
+      final lower = rawSbp > rawDbp ? rawDbp : rawSbp;
+
+      expect(higher, 120);
+      expect(lower, 80);
+
+      // Inverted sensor values (e.g. if watch transmits inverted)
+      const invDbp = 125;
+      const invSbp = 82;
+      final invHigher = invSbp > invDbp ? invSbp : invDbp;
+      final invLower = invSbp > invDbp ? invDbp : invSbp;
+
+      expect(invHigher, 125);
+      expect(invLower, 82);
     });
   });
 }

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -29,6 +31,18 @@ class BleService extends ChangeNotifier {
   WatchTelemetry _telemetry = const WatchTelemetry();
   WatchSettings _settings = const WatchSettings();
   List<int>? _rawBrightnessVibrateConfig;
+
+  // Frame reassembly buffer for incoming multi-packet BLE notification frames
+  final List<int> _rxAssemblyBuffer = [];
+  int _rxExpectedTotalLen = 0;
+  int _rxSeq = 0;
+  int _txSeq = 1;
+
+  int _nextSeq() {
+    _txSeq = (_txSeq + 1) & 0xFFFF;
+    if (_txSeq == 0) _txSeq = 1;
+    return _txSeq;
+  }
 
   final List<LogEntry> _logs = [];
   final List<StreamSubscription> _subscriptions = [];
@@ -70,6 +84,15 @@ class BleService extends ChangeNotifier {
       final cachedSettings = prefs.getString('cached_settings');
       if (cachedSettings != null) {
         _settings = WatchSettings.fromJson(cachedSettings);
+      }
+      final cachedRaw = prefs.getString('cached_raw_brightness');
+      if (cachedRaw != null) {
+        try {
+          final List<dynamic> decoded = jsonDecode(cachedRaw);
+          _rawBrightnessVibrateConfig = decoded.map((e) => e as int).toList();
+        } catch (e) {
+          debugPrint('[BleService] Error decoding cached raw brightness: $e');
+        }
       }
       notifyListeners();
     } catch (e) {
@@ -451,6 +474,10 @@ class BleService extends ChangeNotifier {
     }
     _subscriptions.clear();
 
+    _rxAssemblyBuffer.clear();
+    _rxExpectedTotalLen = 0;
+    _rxSeq = 0;
+
     _isConnected = false;
     _isConnecting = false;
     _isSyncing = false;
@@ -466,24 +493,55 @@ class BleService extends ChangeNotifier {
   void _decodeIncomingPacket(List<int> data, String source) {
     if (data.isEmpty) return;
 
-    // 1. Check for standard HTSmart transport frame: [0xAB, flags, len_hi, len_lo, crc_hi, crc_lo, seq_hi, seq_lo, cmdId, version, keyPacket...]
-    if (data.length >= 10 && data[0] == 0xAB) {
-      if (data.length == 8) return; // ACK packet
-      final cmdId = data[8];
-      if (data.length > 10) {
-        _parseCmdPacket(cmdId, data.sublist(10), source);
+    // 1. Check for standard HTSmart transport frame header:
+    // [0xAB, flags, len_hi, len_lo, crc_hi, crc_lo, seq_hi, seq_lo, cmdId, version, keyPacket...]
+    if (data.length >= 8 && data[0] == 0xAB) {
+      final isAck = (data[1] & 0x10) != 0 || data.length == 8;
+      final seq = ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
+
+      if (isAck) {
+        log('Transport ACK received (seq: $seq)', type: LogType.info);
+        return;
+      }
+
+      final payloadLen = ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
+      _rxExpectedTotalLen = payloadLen;
+      _rxSeq = seq;
+      _rxAssemblyBuffer.clear();
+
+      if (data.length > 8) {
+        _rxAssemblyBuffer.addAll(data.sublist(8));
+      }
+
+      if (_rxAssemblyBuffer.length >= _rxExpectedTotalLen) {
+        final assembled = List<int>.from(_rxAssemblyBuffer.sublist(0, _rxExpectedTotalLen));
+        _rxAssemblyBuffer.clear();
+        _rxExpectedTotalLen = 0;
+        _onFullFrameReceived(assembled, _rxSeq, source);
       }
       return;
     }
 
-    // 2. Direct / unframed packet format: [cmdId, version, keyPacket...]
+    // 2. Fragment continuation packet (if frame reassembly is active)
+    if (_rxExpectedTotalLen > 0) {
+      _rxAssemblyBuffer.addAll(data);
+      if (_rxAssemblyBuffer.length >= _rxExpectedTotalLen) {
+        final assembled = List<int>.from(_rxAssemblyBuffer.sublist(0, _rxExpectedTotalLen));
+        _rxAssemblyBuffer.clear();
+        _rxExpectedTotalLen = 0;
+        _onFullFrameReceived(assembled, _rxSeq, source);
+      }
+      return;
+    }
+
+    // 3. Direct / unframed packet format: [cmdId, version, keyPacket...]
     if (data.length >= 5 && (data[0] == 0x02 || data[0] == 0x05 || data[0] == 0x03 || data[0] == 0x01 || data[0] == 0x07)) {
       final cmdId = data[0];
       _parseCmdPacket(cmdId, data.sublist(2), source);
       return;
     }
 
-    // 3. Fallback direct packet format without version byte (e.g. [cmdId, keyId, ...])
+    // 4. Fallback direct packet format without version byte (e.g. [cmdId, keyId, ...])
     if (data.length >= 3 && (data[0] == 0x02 || data[0] == 0x05)) {
       final cmdId = data[0];
       final keyId = data[1];
@@ -492,8 +550,18 @@ class BleService extends ChangeNotifier {
       return;
     }
 
-    // 4. Legacy / Realtek telemetry frames
+    // 5. Legacy / Realtek telemetry frames
     _decodeLegacyTelemetry(data);
+  }
+
+  void _onFullFrameReceived(List<int> cmdPacket, int seq, String source) {
+    if (cmdPacket.length >= 2) {
+      final cmdId = cmdPacket[0];
+      final keyBytes = cmdPacket.sublist(2);
+      _parseCmdPacket(cmdId, keyBytes, source);
+    }
+    // Acknowledge transport frame to watch
+    writeFF02(HtsmartProtocol.buildTransportAckPacket(seq), 'Transport ACK');
   }
 
   void _parseCmdPacket(int cmdId, List<int> keyBytes, String source) {
@@ -521,7 +589,8 @@ class BleService extends ChangeNotifier {
     if (cmdId == 0x05 && keyId == 0x22 && keyData.length >= 24) {
       final steps = _bytesToIntBE(keyData, 0, 4);
       final distMeters = _bytesToIntBE(keyData, 4, 4).toDouble();
-      final calories = _bytesToIntBE(keyData, 8, 4);
+      final rawCalories = _bytesToIntBE(keyData, 8, 4);
+      final caloriesKcal = (rawCalories / 1000.0).round();
       final deepSleep = _bytesToIntBE(keyData, 12, 4);
       final lightSleep = _bytesToIntBE(keyData, 16, 4);
       final hr = _bytesToIntBE(keyData, 20, 4);
@@ -529,7 +598,7 @@ class BleService extends ChangeNotifier {
       _telemetry = _telemetry.copyWith(
         steps: steps,
         distanceMeters: distMeters,
-        calories: calories,
+        calories: caloriesKcal,
         deepSleepMinutes: deepSleep,
         lightSleepMinutes: lightSleep,
         heartRate: (hr >= 30 && hr <= 220) ? hr : _telemetry.heartRate,
@@ -537,7 +606,7 @@ class BleService extends ChangeNotifier {
       );
       _saveTelemetry();
       notifyListeners();
-      log('Today Metrics: $steps steps, ${(distMeters / 1000.0).toStringAsFixed(2)} km, $calories kcal, Sleep: ${deepSleep + lightSleep}m, HR: $hr BPM', type: LogType.success);
+      log('Today Metrics: $steps steps, ${(distMeters / 1000.0).toStringAsFixed(2)} km, $caloriesKcal kcal, Sleep: ${deepSleep + lightSleep}m, HR: $hr BPM', type: LogType.success);
       return;
     }
 
@@ -545,27 +614,70 @@ class BleService extends ChangeNotifier {
     if (cmdId == 0x05 && keyId == 0x24 && keyData.length >= 10) {
       final hr = keyData.length > 6 ? keyData[6] & 0xFF : 0;
       final spo2 = keyData.length > 7 ? keyData[7] & 0xFF : 0;
-      final dbp = keyData.length > 8 ? keyData[8] & 0xFF : 0;
-      final sbp = keyData.length > 9 ? keyData[9] & 0xFF : 0;
+      final rawDbp = keyData.length > 8 ? keyData[8] & 0xFF : 0;
+      final rawSbp = keyData.length > 9 ? keyData[9] & 0xFF : 0;
       final respiratory = keyData.length > 10 ? keyData[10] & 0xFF : 0;
       final pressure = keyData.length >= 17 ? keyData[16] & 0xFF : null;
+
+      // Validate blood pressure: SBP is always higher than DBP
+      int? sbp;
+      int? dbp;
+      if (rawSbp > 0 || rawDbp > 0) {
+        final higher = math.max(rawSbp, rawDbp);
+        final lower = math.min(rawSbp, rawDbp);
+        if (higher >= 60 && higher <= 240 && lower >= 40 && lower <= 150) {
+          sbp = higher;
+          dbp = lower;
+        }
+      }
 
       _telemetry = _telemetry.copyWith(
         heartRate: (hr >= 30 && hr <= 220) ? hr : _telemetry.heartRate,
         spo2: (spo2 >= 70 && spo2 <= 100) ? spo2 : _telemetry.spo2,
-        diastolicBp: dbp > 30 ? dbp : _telemetry.diastolicBp,
-        systolicBp: sbp > 50 ? sbp : _telemetry.systolicBp,
+        diastolicBp: dbp ?? _telemetry.diastolicBp,
+        systolicBp: sbp ?? _telemetry.systolicBp,
         respiratoryRate: respiratory > 5 ? respiratory : _telemetry.respiratoryRate,
         pressure: pressure,
         lastSyncTime: DateTime.now(),
       );
       _saveTelemetry();
       notifyListeners();
-      log('Live Sensor: HR $hr BPM, SpO2 $spo2%, BP $sbp/$dbp mmHg', type: LogType.data);
+      log('Live Sensor: HR $hr BPM, SpO2 $spo2%, BP ${sbp ?? _telemetry.systolicBp ?? '-'}/${dbp ?? _telemetry.diastolicBp ?? '-'} mmHg', type: LogType.data);
       return;
     }
 
-    // 3. Battery Status: Cmd 0x02, Key 0x1C (28)
+    // 3. Latest Healthy Data query response: Cmd 0x05, Key 0x43 (67)
+    if (cmdId == 0x05 && keyId == 0x43 && keyData.length >= 4) {
+      final hr = keyData[0] & 0xFF;
+      final spo2 = keyData[1] & 0xFF;
+      final rawDbp = keyData[2] & 0xFF;
+      final rawSbp = keyData[3] & 0xFF;
+
+      int? sbp;
+      int? dbp;
+      if (rawSbp > 0 || rawDbp > 0) {
+        final higher = math.max(rawSbp, rawDbp);
+        final lower = math.min(rawSbp, rawDbp);
+        if (higher >= 60 && higher <= 240 && lower >= 40 && lower <= 150) {
+          sbp = higher;
+          dbp = lower;
+        }
+      }
+
+      _telemetry = _telemetry.copyWith(
+        heartRate: (hr >= 30 && hr <= 220) ? hr : _telemetry.heartRate,
+        spo2: (spo2 >= 70 && spo2 <= 100) ? spo2 : _telemetry.spo2,
+        diastolicBp: dbp ?? _telemetry.diastolicBp,
+        systolicBp: sbp ?? _telemetry.systolicBp,
+        lastSyncTime: DateTime.now(),
+      );
+      _saveTelemetry();
+      notifyListeners();
+      log('Latest Health: HR $hr BPM, SpO2 $spo2%, BP ${sbp ?? '-'}/${dbp ?? '-'} mmHg', type: LogType.success);
+      return;
+    }
+
+    // 4. Battery Status: Cmd 0x02, Key 0x1C (28)
     if (cmdId == 0x02 && keyId == 0x1C && keyData.isNotEmpty) {
       final isCharging = keyData[0] == 1;
       final percent = keyData.length >= 3 ? keyData[2] : (keyData.length >= 2 ? keyData[1] * 20 : 0);
@@ -578,16 +690,16 @@ class BleService extends ChangeNotifier {
       return;
     }
 
-    // 4. WristbandConfig TLV response: Cmd 0x02, Key 0x21 (33)
+    // 5. WristbandConfig TLV response: Cmd 0x02, Key 0x21 (33)
     if (cmdId == 0x02 && keyId == 0x21 && keyData.length >= 40) {
       _parseWristbandConfigTLV(keyData);
       return;
     }
 
-    // 5. Historical sync stream chunk or finish (Cmd 0x05, Key 0x08)
+    // 6. Historical sync stream chunk or finish (Cmd 0x05, Key 0x08)
     if (cmdId == 0x05 && keyId == 0x08) {
       // Send sync acknowledgement
-      writeFF02(HtsmartProtocol.buildSyncAckPacket(success: true), 'Sync ACK');
+      writeFF02(HtsmartProtocol.buildSyncAckPacket(success: true, seq: _nextSeq()), 'Sync ACK');
       return;
     }
   }
@@ -671,6 +783,9 @@ class BleService extends ChangeNotifier {
           case 122: // BrightnessVibrateConfig (0x7A)
             if (itemData.length >= 32) {
               _rawBrightnessVibrateConfig = List<int>.from(itemData);
+              SharedPreferences.getInstance().then((prefs) {
+                prefs.setString('cached_raw_brightness', jsonEncode(_rawBrightnessVibrateConfig));
+              });
               timeout = itemData[0];
               final brightCount = itemData[25] & 0xFF;
               if (brightCount > 0 && itemData.length >= 26 + brightCount) {
@@ -825,9 +940,13 @@ class BleService extends ChangeNotifier {
 
       // 3. Today's total metrics (Steps, Distance, Calories, Sleep, Heart Rate)
       await queryTodayMetrics();
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 150));
 
-      // 4. Watch configuration query (Brightness, Reminders, Preferences)
+      // 4. Latest health metrics query (HR, SpO2, Blood Pressure)
+      await queryLatestHealthy();
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // 5. Watch configuration query (Brightness, Reminders, Preferences)
       await queryWatchConfig();
       await Future.delayed(const Duration(milliseconds: 200));
 
@@ -844,28 +963,38 @@ class BleService extends ChangeNotifier {
 
   Future<void> syncTime() async {
     final now = DateTime.now();
-    final packet = HtsmartProtocol.buildTimeSyncPacket(now, seq: 1);
+    final packet = HtsmartProtocol.buildTimeSyncPacket(now, seq: _nextSeq());
     await writeFF02(packet, 'Time Sync');
   }
 
   Future<void> queryBattery() async {
-    final packet = HtsmartProtocol.buildBatteryQueryPacket();
+    final packet = HtsmartProtocol.buildBatteryQueryPacket(seq: _nextSeq());
     await writeFF02(packet, 'Battery Query');
   }
 
   Future<void> queryTodayMetrics() async {
-    final packet = HtsmartProtocol.buildTodayTotalDataPacket();
+    final packet = HtsmartProtocol.buildTodayTotalDataPacket(seq: _nextSeq());
     await writeFF02(packet, 'Today Total Metrics');
   }
 
+  Future<void> queryLatestHealthy() async {
+    final packet = HtsmartProtocol.buildLatestHealthyPacket(seq: _nextSeq());
+    await writeFF02(packet, 'Query Latest Health');
+  }
+
   Future<void> queryWatchConfig() async {
-    final packet = HtsmartProtocol.buildConfigQueryPacket();
+    final packet = HtsmartProtocol.buildConfigQueryPacket(seq: _nextSeq());
     await writeFF02(packet, 'Watch Config Query');
   }
 
   /// Triggers a brief live health sensor sample (HR + SpO2)
   Future<void> triggerLiveHealthSample() async {
-    final packet = HtsmartProtocol.buildRealTimeHealthPacket(healthyType: 0x07, durationMinutes: 1, enable: true);
+    final packet = HtsmartProtocol.buildRealTimeHealthPacket(
+      healthyType: 0x07,
+      durationMinutes: 1,
+      enable: true,
+      seq: _nextSeq(),
+    );
     await writeFF02(packet, 'Health Sample Request');
   }
 
@@ -876,7 +1005,12 @@ class BleService extends ChangeNotifier {
     notifyListeners();
     log('Starting real-time health sensor measurement...');
 
-    final packet = HtsmartProtocol.buildRealTimeHealthPacket(healthyType: 0x07, durationMinutes: 1, enable: true);
+    final packet = HtsmartProtocol.buildRealTimeHealthPacket(
+      healthyType: 0x07,
+      durationMinutes: 1,
+      enable: true,
+      seq: _nextSeq(),
+    );
     await writeFF02(packet, 'Start Live Health Measurement');
 
     _healthMeasureTimer?.cancel();
@@ -893,7 +1027,12 @@ class BleService extends ChangeNotifier {
     notifyListeners();
 
     if (_isConnected) {
-      final packet = HtsmartProtocol.buildRealTimeHealthPacket(healthyType: 0x07, durationMinutes: 0, enable: false);
+      final packet = HtsmartProtocol.buildRealTimeHealthPacket(
+        healthyType: 0x07,
+        durationMinutes: 0,
+        enable: false,
+        seq: _nextSeq(),
+      );
       await writeFF02(packet, 'Stop Live Health Measurement');
       log('Live health measurement finished ✓', type: LogType.info);
     }
@@ -920,6 +1059,7 @@ class BleService extends ChangeNotifier {
         timeoutSeconds: timeoutSeconds,
         vibration: vibration,
         rawConfig: _rawBrightnessVibrateConfig,
+        seq: _nextSeq(),
       );
       await writeFF02(packet, 'Update Brightness & Timeout');
     }
@@ -947,6 +1087,7 @@ class BleService extends ChangeNotifier {
         enable: enabled,
         startMinute: startHour * 60 + startMin,
         endMinute: endHour * 60 + endMin,
+        seq: _nextSeq(),
       );
       await writeFF02(packet, 'Update Raise to Wake');
     }
@@ -977,6 +1118,7 @@ class BleService extends ChangeNotifier {
         enablePeriod: enabled,
         startMinute: startHour * 60 + startMin,
         endMinute: endHour * 60 + endMin,
+        seq: _nextSeq(),
       );
       await writeFF02(packet, 'Update Do Not Disturb');
     }
@@ -997,6 +1139,7 @@ class BleService extends ChangeNotifier {
       final packet = HtsmartProtocol.buildHealthyMonitorPacket(
         enable: enabled,
         intervalMinutes: intervalMinutes,
+        seq: _nextSeq(),
       );
       await writeFF02(packet, 'Update Continuous Health');
     }
@@ -1026,6 +1169,7 @@ class BleService extends ChangeNotifier {
         startMinute: startHour * 60,
         endMinute: endHour * 60,
         intervalMinutes: intervalMinutes,
+        seq: _nextSeq(),
       );
       await writeFF02(packet, 'Update Sedentary Reminder');
     }
@@ -1052,6 +1196,7 @@ class BleService extends ChangeNotifier {
         intervalMinutes: intervalMinutes,
         startMinute: startHour * 60,
         endMinute: endHour * 60,
+        seq: _nextSeq(),
       );
       await writeFF02(packet, 'Update Drink Water Reminder');
     }
@@ -1081,6 +1226,7 @@ class BleService extends ChangeNotifier {
         isRightHand: _settings.isRightHand,
         weatherEnabled: _settings.weatherEnabled,
         disconnectReminder: _settings.disconnectReminder,
+        seq: _nextSeq(),
       );
       await writeFF02(packet, 'Update Watch Preferences');
     }

@@ -15,6 +15,7 @@ class WatchSettingsScreen extends StatefulWidget {
 
 class _WatchSettingsScreenState extends State<WatchSettingsScreen> {
   BleService get _ble => widget.bleService;
+  double? _sliderBrightness;
 
   @override
   void initState() {
@@ -92,7 +93,7 @@ class _WatchSettingsScreenState extends State<WatchSettingsScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Screen Brightness', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                      Text('Level ${settings.brightness} of 5', style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold)),
+                      Text('Level ${(_sliderBrightness ?? settings.brightness.toDouble()).round()} of 5', style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -101,12 +102,20 @@ class _WatchSettingsScreenState extends State<WatchSettingsScreen> {
                     const Icon(Icons.brightness_low, size: 18, color: Colors.grey),
                     Expanded(
                       child: Slider(
-                        value: settings.brightness.toDouble(),
+                        value: (_sliderBrightness ?? settings.brightness.toDouble()).clamp(1.0, 5.0),
                         min: 1.0,
                         max: 5.0,
                         divisions: 4,
                         activeColor: AppTheme.accent,
                         onChanged: (val) {
+                          setState(() {
+                            _sliderBrightness = val;
+                          });
+                        },
+                        onChangeEnd: (val) {
+                          setState(() {
+                            _sliderBrightness = null;
+                          });
                           _ble.updateBrightnessAndTimeout(
                             brightness: val.round(),
                             timeoutSeconds: settings.screenTimeoutSeconds,
