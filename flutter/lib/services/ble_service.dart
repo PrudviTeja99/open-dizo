@@ -1,0 +1,332 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:intl/intl.dart';
+
+import '../core/constants/dizo_uuids.dart';
+import '../models/log_entry.dart';
+import '../models/watch_telemetry.dart';
+import 'htsmart_protocol.dart';
+
+/// Central BLE Service managing connections, characteristic I/O, and telemetry
+class BleService extends ChangeNotifier {
+  BluetoothDevice? _device;
+  bool _isConnected = false;
+  bool _isConnecting = false;
+  bool _isScanning = false;
+
+  BluetoothCharacteristic? _charFF02;
+  BluetoothCharacteristic? _charFF03;
+  BluetoothCharacteristic? _charFEA1;
+
+  WatchTelemetry _telemetry = const WatchTelemetry();
+  final List<LogEntry> _logs = [];
+  final List<StreamSubscription> _subscriptions = [];
+
+  // Getters
+  BluetoothDevice? get device => _device;
+  bool get isConnected => _isConnected;
+  bool get isConnecting => _isConnecting;
+  bool get isScanning => _isScanning;
+  WatchTelemetry get telemetry => _telemetry;
+  List<LogEntry> get logs => List.unmodifiable(_logs);
+
+  void clearLogs() {
+    _logs.clear();
+    notifyListeners();
+  }
+
+  void log(String message, {LogType type = LogType.info}) {
+    _logs.add(LogEntry(
+      message: message,
+      type: type,
+      time: DateFormat('HH:mm:ss').format(DateTime.now()),
+    ));
+    if (_logs.length > 200) {
+      _logs.removeAt(0);
+    }
+    notifyListeners();
+  }
+
+  String _hex(List<int> bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
+
+  Future<bool> requestPermissions() async {
+    final statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].request();
+
+    final allGranted = statuses.values.every((s) => s.isGranted || s.isLimited);
+    if (!allGranted) {
+      log('Bluetooth/Location permissions denied', type: LogType.error);
+    }
+    return allGranted;
+  }
+
+  Future<void> scanAndConnect() async {
+    if (_isConnected) {
+      disconnect();
+      return;
+    }
+
+    if (!await requestPermissions()) return;
+
+    final adapterState = await FlutterBluePlus.adapterState.first;
+    if (adapterState != BluetoothAdapterState.on) {
+      log('Bluetooth is OFF — please enable it', type: LogType.error);
+      await FlutterBluePlus.turnOn();
+      return;
+    }
+
+    _isScanning = true;
+    _isConnecting = false;
+    notifyListeners();
+    log('Scanning for DIZO Watch D...');
+
+    await FlutterBluePlus.startScan(
+      timeout: const Duration(seconds: 12),
+      androidScanMode: AndroidScanMode.lowLatency,
+    );
+
+    bool found = false;
+    await for (final results in FlutterBluePlus.scanResults) {
+      for (final r in results) {
+        final name = r.device.platformName;
+        if (name.toUpperCase().contains('DIZO')) {
+          log('Found: $name (${r.device.remoteId})', type: LogType.success);
+          await FlutterBluePlus.stopScan();
+          found = true;
+          _isScanning = false;
+          _isConnecting = true;
+          notifyListeners();
+          await connectToDevice(r.device);
+          return;
+        }
+      }
+    }
+
+    _isScanning = false;
+    notifyListeners();
+    if (!found) {
+      log('DIZO Watch D not found. Ensure it is nearby and not bonded to another host.',
+          type: LogType.error);
+    }
+  }
+
+  Future<void> connectToDevice(BluetoothDevice device) async {
+    try {
+      log('Connecting to ${device.platformName}...');
+      await device.connect(autoConnect: false, timeout: const Duration(seconds: 10));
+
+      log('Connected! Discovering services...', type: LogType.success);
+      _device = device;
+
+      final sub = device.connectionState.listen((state) {
+        if (state == BluetoothConnectionState.disconnected) {
+          log('Watch disconnected', type: LogType.error);
+          _onDisconnected();
+        }
+      });
+      _subscriptions.add(sub);
+
+      final services = await device.discoverServices();
+      log('Discovered ${services.length} services');
+
+      // Primary service (000001ff)
+      final primaryService = services.firstWhere(
+        (s) => s.uuid == DizoUuids.servicePrimary,
+        orElse: () => throw Exception('Primary service not found!'),
+      );
+
+      _charFF02 = primaryService.characteristics.firstWhere(
+        (c) => c.uuid == DizoUuids.charFF02Write,
+        orElse: () => throw Exception('FF02 (Write) not found!'),
+      );
+
+      _charFF03 = primaryService.characteristics.firstWhere(
+        (c) => c.uuid == DizoUuids.charFF03Notify,
+        orElse: () => throw Exception('FF03 (Notify) not found!'),
+      );
+
+      await _charFF03!.setNotifyValue(true);
+      final ff03Sub = _charFF03!.onValueReceived.listen((value) {
+        log('FF03 ← ${_hex(value)}', type: LogType.data);
+      });
+      _subscriptions.add(ff03Sub);
+      log('FF03 notification stream active ✓', type: LogType.success);
+
+      // Heartbeat & status (FEE7)
+      try {
+        final fee7Service = services.firstWhere(
+          (s) => s.uuid == DizoUuids.serviceFee7,
+        );
+        _charFEA1 = fee7Service.characteristics.firstWhere(
+          (c) => c.uuid == DizoUuids.charFEA1Notify,
+        );
+        await _charFEA1!.setNotifyValue(true);
+        final fea1Sub = _charFEA1!.onValueReceived.listen((value) {
+          log('FEA1 ← ${_hex(value)}', type: LogType.data);
+          _decodeFEA1(value);
+        });
+        _subscriptions.add(fea1Sub);
+        log('FEA1 telemetry stream active ✓', type: LogType.success);
+      } catch (e) {
+        log('FEA1 characteristic optional or inactive: $e', type: LogType.info);
+      }
+
+      _isConnected = true;
+      _isConnecting = false;
+      notifyListeners();
+
+      // Auto time sync on connection
+      log('Auto-synchronizing watch time...');
+      await syncTime();
+    } catch (e) {
+      log('Connection failed: $e', type: LogType.error);
+      _isConnected = false;
+      _isConnecting = false;
+      notifyListeners();
+    }
+  }
+
+  void disconnect() {
+    _device?.disconnect();
+    _onDisconnected();
+    log('Disconnected by user');
+  }
+
+  void _onDisconnected() {
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    _subscriptions.clear();
+
+    _isConnected = false;
+    _isConnecting = false;
+    _device = null;
+    _charFF02 = null;
+    _charFF03 = null;
+    _charFEA1 = null;
+    _telemetry = const WatchTelemetry();
+    notifyListeners();
+  }
+
+  void _decodeFEA1(List<int> data) {
+    if (data.length < 2) return;
+    final packetType = data[0];
+
+    switch (packetType) {
+      case 0x07: // Activity frame
+        int? steps = _telemetry.steps;
+        int? calories = _telemetry.calories;
+        double? distance = _telemetry.distanceMeters;
+
+        if (data.length >= 3) steps = (data[2] << 8) | data[1];
+        if (data.length >= 6) calories = ((data[5] << 8) | data[4]) ~/ 10;
+        if (data.length >= 9) distance = ((data[8] << 8) | data[7]) / 100.0;
+
+        _telemetry = _telemetry.copyWith(
+          steps: steps,
+          calories: calories,
+          distanceMeters: distance,
+        );
+        notifyListeners();
+        break;
+
+      case 0x08: // Heart rate
+        if (data.length >= 2 && data[1] >= 30 && data[1] <= 220) {
+          _telemetry = _telemetry.copyWith(heartRate: data[1]);
+          notifyListeners();
+        }
+        break;
+
+      case 0x05: // Battery
+        if (data.length >= 2 && data[1] <= 100) {
+          _telemetry = _telemetry.copyWith(battery: data[1]);
+          notifyListeners();
+        }
+        break;
+
+      case 0x0A: // SpO2
+        if (data.length >= 3 && data[2] >= 80 && data[2] <= 100) {
+          _telemetry = _telemetry.copyWith(spo2: data[2]);
+          notifyListeners();
+        }
+        break;
+    }
+  }
+
+  Future<void> writeFF02(List<int> bytes, String label) async {
+    if (_charFF02 == null) {
+      log('Not connected!', type: LogType.error);
+      return;
+    }
+    try {
+      log('$label → FF02: ${_hex(bytes)}', type: LogType.send);
+      await _charFF02!.write(bytes, withoutResponse: false);
+      log('$label sent ✓', type: LogType.success);
+    } catch (e) {
+      try {
+        await _charFF02!.write(bytes, withoutResponse: true);
+        log('$label sent (no-response) ✓', type: LogType.success);
+      } catch (e2) {
+        log('$label failed: $e2', type: LogType.error);
+      }
+    }
+  }
+
+  Future<void> syncTime() async {
+    final now = DateTime.now();
+    log('Building HTSmart time synchronization packet...');
+    final packet = HtsmartProtocol.buildTimeSyncPacket(now, seq: 1);
+    await writeFF02(packet, 'Time Sync (HTSmart)');
+  }
+
+  Future<void> syncSteps() async {
+    await writeFF02([0x03, 0x01], '🚶 Steps sync');
+  }
+
+  Future<void> syncHealth() async {
+    await writeFF02([0x03, 0x03], '❤️ HR sync');
+    await Future.delayed(const Duration(milliseconds: 300));
+    await writeFF02([0x03, 0x04], '🩸 SpO2 sync');
+  }
+
+  Future<void> syncSleep() async {
+    await writeFF02([0x03, 0x02], '😴 Sleep sync');
+  }
+
+  Future<void> readBattery() async {
+    try {
+      final services = await _device?.discoverServices();
+      final secService = services?.firstWhere(
+        (s) => s.uuid == DizoUuids.serviceSecondary,
+      );
+      final charFFD2 = secService?.characteristics.firstWhere(
+        (c) => c.uuid == DizoUuids.charFFD2,
+      );
+      if (charFFD2 != null) {
+        final value = await charFFD2.read();
+        log('FFD2 ← ${_hex(value)}', type: LogType.data);
+        if (value.isNotEmpty) {
+          _telemetry = _telemetry.copyWith(battery: value[0]);
+          notifyListeners();
+          log('Battery: ${value[0]}%', type: LogType.info);
+        }
+      }
+    } catch (e) {
+      log('Battery query failed: $e', type: LogType.error);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    super.dispose();
+  }
+}
