@@ -42,6 +42,7 @@ class BleService extends ChangeNotifier {
   }
 
   void log(String message, {LogType type = LogType.info}) {
+    debugPrint('[BleService] [${type.name.toUpperCase()}] $message');
     _logs.add(LogEntry(
       message: message,
       type: type,
@@ -63,11 +64,19 @@ class BleService extends ChangeNotifier {
       Permission.locationWhenInUse,
     ].request();
 
-    final allGranted = statuses.values.every((s) => s.isGranted || s.isLimited);
-    if (!allGranted) {
-      log('Bluetooth/Location permissions denied', type: LogType.error);
+    final scanGranted = (statuses[Permission.bluetoothScan]?.isGranted ?? false) ||
+        (statuses[Permission.bluetoothScan]?.isLimited ?? false);
+    final connectGranted = (statuses[Permission.bluetoothConnect]?.isGranted ?? false) ||
+        (statuses[Permission.bluetoothConnect]?.isLimited ?? false);
+    final locGranted = (statuses[Permission.locationWhenInUse]?.isGranted ?? false) ||
+        (statuses[Permission.locationWhenInUse]?.isLimited ?? false);
+
+    final hasPermission = (scanGranted && connectGranted) || locGranted;
+    if (!hasPermission) {
+      log('Bluetooth permissions denied — please enable in Settings', type: LogType.error);
+      return false;
     }
-    return allGranted;
+    return true;
   }
 
   Future<void> scanAndConnect() async {
@@ -260,7 +269,7 @@ class BleService extends ChangeNotifier {
 
   Future<void> connectToDevice(BluetoothDevice device) async {
     try {
-      log('Connecting to ${device.platformName}...');
+      log('Connecting to ${device.platformName.isNotEmpty ? device.platformName : device.remoteId.str}...');
       await device.connect(autoConnect: false, timeout: const Duration(seconds: 10));
 
       log('Connected! Discovering services...', type: LogType.success);
@@ -274,22 +283,29 @@ class BleService extends ChangeNotifier {
       });
       _subscriptions.add(sub);
 
+      try {
+        await device.requestMtu(250);
+        log('MTU configured');
+      } catch (e) {
+        log('MTU negotiation skipped: $e', type: LogType.info);
+      }
+
       final services = await device.discoverServices();
       log('Discovered ${services.length} services');
 
       // Primary service (000001ff)
       final primaryService = services.firstWhere(
-        (s) => s.uuid == DizoUuids.servicePrimary,
-        orElse: () => throw Exception('Primary service not found!'),
+        (s) => s.uuid == DizoUuids.servicePrimary || s.uuid.str128.toLowerCase().contains('01ff'),
+        orElse: () => throw Exception('Primary service (01ff) not found!'),
       );
 
       _charFF02 = primaryService.characteristics.firstWhere(
-        (c) => c.uuid == DizoUuids.charFF02Write,
+        (c) => c.uuid == DizoUuids.charFF02Write || c.uuid.str128.toLowerCase().contains('ff02'),
         orElse: () => throw Exception('FF02 (Write) not found!'),
       );
 
       _charFF03 = primaryService.characteristics.firstWhere(
-        (c) => c.uuid == DizoUuids.charFF03Notify,
+        (c) => c.uuid == DizoUuids.charFF03Notify || c.uuid.str128.toLowerCase().contains('ff03'),
         orElse: () => throw Exception('FF03 (Notify) not found!'),
       );
 
@@ -303,10 +319,10 @@ class BleService extends ChangeNotifier {
       // Heartbeat & status (FEE7)
       try {
         final fee7Service = services.firstWhere(
-          (s) => s.uuid == DizoUuids.serviceFee7,
+          (s) => s.uuid == DizoUuids.serviceFee7 || s.uuid.str128.toLowerCase().contains('fee7'),
         );
         _charFEA1 = fee7Service.characteristics.firstWhere(
-          (c) => c.uuid == DizoUuids.charFEA1Notify,
+          (c) => c.uuid == DizoUuids.charFEA1Notify || c.uuid.str128.toLowerCase().contains('fea1'),
         );
         await _charFEA1!.setNotifyValue(true);
         final fea1Sub = _charFEA1!.onValueReceived.listen((value) {

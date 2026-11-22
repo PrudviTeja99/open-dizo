@@ -8,17 +8,17 @@ class DizoUuids {
 
   // Primary Service Characteristics
   static final Guid charFF02Write =
-      Guid('0000ff02-3c17-d293-8e48-14fe2e4da212'); // Command write endpoint
+      Guid('0000ff02-0000-1000-8000-00805f9b34fb'); // Command write endpoint
   static final Guid charFF03Notify =
-      Guid('0000ff03-3c17-d293-8e48-14fe2e4da212'); // Notification / response endpoint
+      Guid('0000ff03-0000-1000-8000-00805f9b34fb'); // Notification / response endpoint
   static final Guid charFF04Rw =
-      Guid('0000ff04-3c17-d293-8e48-14fe2e4da212'); // Device configuration
+      Guid('0000ff04-0000-1000-8000-00805f9b34fb'); // Device configuration
 
   // Secondary Service (D0FF)
   static final Guid serviceSecondary =
       Guid('0000d0ff-3c17-d293-8e48-14fe2e4da212');
   static final Guid charFFD2 =
-      Guid('0000ffd2-3c17-d293-8e48-14fe2e4da212'); // Battery and device info
+      Guid('0000ffd2-0000-1000-8000-00805f9b34fb'); // Battery and device info
 
   // Heartbeat & Live Telemetry Service (FEE7)
   static final Guid serviceFee7 =

@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/utils/watch_qr_parser.dart';
+import '../../models/log_entry.dart';
 import '../../services/ble_service.dart';
 
 class QrScannerScreen extends StatefulWidget {
@@ -216,10 +217,10 @@ class _QrScannerScreenState extends State<QrScannerScreen>
         elevation: 0,
         actions: [
           if (_isMobile && _controller != null) ...[
-            ValueListenableBuilder<TorchState>(
-              valueListenable: _controller!.torchState,
+            ValueListenableBuilder<MobileScannerState>(
+              valueListenable: _controller!,
               builder: (context, state, child) {
-                final isOn = state == TorchState.on;
+                final isOn = state.torchState == TorchState.on;
                 return IconButton(
                   icon: Icon(isOn ? Icons.flash_on : Icons.flash_off),
                   tooltip: isOn ? 'Turn Off Flash' : 'Turn On Flash',
