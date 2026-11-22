@@ -17,6 +17,10 @@
     <!-- Haptic Feedback / Vibration -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Network for App Updates -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- BLE hardware feature (not required, but recommended) -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -44,6 +48,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- FileProvider for APK installation -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <meta-data
             android:name="flutterEmbedding"

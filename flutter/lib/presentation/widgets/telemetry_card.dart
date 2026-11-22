@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/watch_telemetry.dart';
+import '../../services/ble_service.dart';
 
 class TelemetryCard extends StatelessWidget {
   final WatchTelemetry telemetry;
   final bool isConnected;
   final VoidCallback? onRefresh;
   final bool isSyncing;
+  final BleService? bleService;
 
   const TelemetryCard({
     super.key,
@@ -15,6 +17,7 @@ class TelemetryCard extends StatelessWidget {
     this.isConnected = true,
     this.onRefresh,
     this.isSyncing = false,
+    this.bleService,
   });
 
   @override
@@ -22,14 +25,14 @@ class TelemetryCard extends StatelessWidget {
     final steps = telemetry.steps ?? 0;
     const goalSteps = 10000;
     final progress = (steps / goalSteps).clamp(0.0, 1.0);
-    final distanceKm = telemetry.distanceMeters != null
-        ? (telemetry.distanceMeters! / 1000.0).toStringAsFixed(2)
-        : (steps * 0.00075).toStringAsFixed(2);
-    final calories = telemetry.calories ?? (steps * 0.04).round();
+    final distanceKm = telemetry.distanceKmFormatted;
+    final calories = telemetry.caloriesKcal;
 
     final lastSyncStr = telemetry.lastSyncTime != null
         ? DateFormat('hh:mm a').format(telemetry.lastSyncTime!)
         : 'Auto-syncing';
+
+    final isMeasuring = bleService?.isMeasuringHealth ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,24 +56,23 @@ class TelemetryCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (telemetry.lastSyncTime != null || isSyncing)
-              Row(
-                children: [
-                  if (isSyncing)
-                    const SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.accent),
-                    )
-                  else
-                    const Icon(Icons.sync_alt, size: 12, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    isSyncing ? 'Syncing...' : 'Updated $lastSyncStr',
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                  ),
-                ],
-              ),
+            Row(
+              children: [
+                if (isSyncing)
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.accent),
+                  )
+                else
+                  const Icon(Icons.sync_alt, size: 12, color: Colors.grey),
+                const SizedBox(width: 4),
+                Text(
+                  isSyncing ? 'Syncing...' : 'Updated $lastSyncStr',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                ),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -222,7 +224,72 @@ class TelemetryCard extends StatelessWidget {
         ),
         const SizedBox(height: 14),
 
-        // 2. Health Vitals Grid (Heart Rate, SpO2, Battery, Sleep)
+        // Live Health Measure Action Bar
+        if (bleService != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isMeasuring ? Colors.redAccent.withValues(alpha: 0.15) : AppTheme.surfaceLight,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isMeasuring ? Colors.redAccent.withValues(alpha: 0.5) : AppTheme.border,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isMeasuring ? Icons.sensors_rounded : Icons.favorite_border_rounded,
+                  color: isMeasuring ? Colors.redAccent : AppTheme.accent,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isMeasuring ? 'Measuring Live Sensors...' : 'Live Health Measurement',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: isMeasuring ? Colors.redAccent : Colors.white,
+                        ),
+                      ),
+                      Text(
+                        isMeasuring ? 'Sensors active on wrist. Reading HR & SpO2...' : 'Sample instant HR, SpO2 & Blood Pressure',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                      ),
+                    ],
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: isConnected
+                      ? () {
+                          if (isMeasuring) {
+                            bleService?.stopLiveHealthMeasurement();
+                          } else {
+                            bleService?.startLiveHealthMeasurement();
+                          }
+                        }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isMeasuring ? Colors.redAccent : AppTheme.accent,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    minimumSize: Size.zero,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: Text(
+                    isMeasuring ? 'Stop' : 'Measure',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // 2. Health Vitals Grid (Heart Rate, SpO2, Sleep, Blood Pressure)
         Row(
           children: [
             // Heart Rate Card
@@ -234,7 +301,7 @@ class TelemetryCard extends StatelessWidget {
                 value: telemetry.heartRate != null ? '${telemetry.heartRate}' : '--',
                 unit: 'BPM',
                 subtitle: telemetry.heartRate != null
-                    ? (telemetry.heartRate! < 100 ? 'Normal resting' : 'Elevated')
+                    ? (telemetry.heartRate! < 100 ? 'Normal resting' : 'Active / Elevated')
                     : 'Auto-tracking',
               ),
             ),
@@ -245,9 +312,9 @@ class TelemetryCard extends StatelessWidget {
                 icon: Icons.water_drop,
                 iconColor: Colors.tealAccent,
                 label: 'Blood Oxygen',
-                value: telemetry.spo2 != null ? '${telemetry.spo2}' : '98',
+                value: telemetry.spo2 != null ? '${telemetry.spo2}' : '--',
                 unit: '%',
-                subtitle: telemetry.spo2 != null ? 'Optimal level' : 'Normal range',
+                subtitle: telemetry.spo2 != null ? 'Optimal range' : 'Optical pulse-ox',
               ),
             ),
           ],
@@ -255,30 +322,80 @@ class TelemetryCard extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           children: [
-            // Battery Status Card
-            Expanded(
-              child: _vitalCard(
-                icon: Icons.battery_charging_full,
-                iconColor: Colors.greenAccent,
-                label: 'Watch Battery',
-                value: telemetry.battery != null ? '${telemetry.battery}' : '--',
-                unit: '%',
-                subtitle: isConnected ? 'Connected & ready' : 'Last reported',
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Sleep Card
+            // Sleep Card (with deep & light sleep duration)
             Expanded(
               child: _vitalCard(
                 icon: Icons.bedtime,
                 iconColor: Colors.purpleAccent,
-                label: 'Nightly Rest',
-                value: '7.5',
-                unit: 'hrs',
-                subtitle: 'Restorative sleep',
+                label: 'Sleep Rest',
+                value: telemetry.totalSleepFormatted,
+                unit: '',
+                subtitle: telemetry.deepSleepMinutes != null
+                    ? 'Deep: ${telemetry.deepSleepMinutes}m · Light: ${telemetry.lightSleepMinutes ?? 0}m'
+                    : 'Nightly analysis',
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Blood Pressure Card
+            Expanded(
+              child: _vitalCard(
+                icon: Icons.speed_rounded,
+                iconColor: Colors.amberAccent,
+                label: 'Blood Pressure',
+                value: telemetry.bpFormatted,
+                unit: telemetry.bpFormatted != '--' ? 'mmHg' : '',
+                subtitle: telemetry.bpFormatted != '--' ? 'Estimated pulse wave' : 'Tap measure to sample',
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        // Battery and Connection Status Tile
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.battery_charging_full, color: Colors.greenAccent, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Battery: ${telemetry.battery != null ? "${telemetry.battery}%" : "--"}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                    ),
+                    Text(
+                      isConnected ? 'Hardware linked via BLE GATT' : 'Offline · Tap to connect',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                    ),
+                  ],
+                ),
+              ),
+              if (isConnected)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                  ),
+                  child: const Text('ONLINE', style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+            ],
+          ),
         ),
       ],
     );
@@ -327,16 +444,18 @@ class TelemetryCard extends StatelessWidget {
               Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(width: 4),
-              Text(
-                unit,
-                style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w500),
-              ),
+              if (unit.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                Text(
+                  unit,
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500], fontWeight: FontWeight.w500),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 4),

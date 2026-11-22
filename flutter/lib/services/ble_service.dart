@@ -9,26 +9,32 @@ import '../core/constants/dizo_uuids.dart';
 import '../models/discovered_device.dart';
 import '../models/log_entry.dart';
 import '../models/watch_telemetry.dart';
+import '../models/watch_settings.dart';
 import 'htsmart_protocol.dart';
 
-/// Central BLE Service managing connections, characteristic I/O, and telemetry
+/// Central BLE Service managing connections, characteristic I/O, telemetry,
+/// and complete watch options/settings according to clean protocol specifications.
 class BleService extends ChangeNotifier {
   BluetoothDevice? _device;
   bool _isConnected = false;
   bool _isConnecting = false;
   bool _isScanning = false;
   bool _isSyncing = false;
+  bool _isMeasuringHealth = false;
 
   BluetoothCharacteristic? _charFF02;
   BluetoothCharacteristic? _charFF03;
   BluetoothCharacteristic? _charFEA1;
 
   WatchTelemetry _telemetry = const WatchTelemetry();
+  WatchSettings _settings = const WatchSettings();
+
   final List<LogEntry> _logs = [];
   final List<StreamSubscription> _subscriptions = [];
   final List<DiscoveredDevice> _discoveredDevices = [];
   StreamSubscription? _scanResultsSub;
   Timer? _periodicSyncTimer;
+  Timer? _healthMeasureTimer;
 
   String? _lastDeviceMac;
   String? _lastDeviceName;
@@ -43,7 +49,9 @@ class BleService extends ChangeNotifier {
   bool get isConnecting => _isConnecting;
   bool get isScanning => _isScanning;
   bool get isSyncing => _isSyncing;
+  bool get isMeasuringHealth => _isMeasuringHealth;
   WatchTelemetry get telemetry => _telemetry;
+  WatchSettings get settings => _settings;
   List<LogEntry> get logs => List.unmodifiable(_logs);
   List<DiscoveredDevice> get discoveredDevices => List.unmodifiable(_discoveredDevices);
   String? get lastDeviceMac => _lastDeviceMac;
@@ -58,6 +66,10 @@ class BleService extends ChangeNotifier {
       if (cachedTel != null) {
         _telemetry = WatchTelemetry.fromJson(cachedTel);
       }
+      final cachedSettings = prefs.getString('cached_settings');
+      if (cachedSettings != null) {
+        _settings = WatchSettings.fromJson(cachedSettings);
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('[BleService] Error loading persisted data: $e');
@@ -70,6 +82,15 @@ class BleService extends ChangeNotifier {
       await prefs.setString('cached_telemetry', _telemetry.toJson());
     } catch (e) {
       debugPrint('[BleService] Error saving telemetry: $e');
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_settings', _settings.toJson());
+    } catch (e) {
+      debugPrint('[BleService] Error saving settings: $e');
     }
   }
 
@@ -102,9 +123,6 @@ class BleService extends ChangeNotifier {
     }
     notifyListeners();
   }
-
-  String _hex(List<int> bytes) =>
-      bytes.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
 
   Future<bool> requestPermissions() async {
     final statuses = await [
@@ -205,6 +223,11 @@ class BleService extends ChangeNotifier {
           _discoveredDevices.add(d);
         }
       }
+      _discoveredDevices.sort((a, b) {
+        if (a.isDizo && !b.isDizo) return -1;
+        if (!a.isDizo && b.isDizo) return 1;
+        return b.rssi.compareTo(a.rssi);
+      });
       notifyListeners();
     });
 
@@ -221,7 +244,6 @@ class BleService extends ChangeNotifier {
     }
   }
 
-  /// Stops ongoing discovery scan
   Future<void> stopDiscoveryScan() async {
     await FlutterBluePlus.stopScan();
     await _scanResultsSub?.cancel();
@@ -258,8 +280,8 @@ class BleService extends ChangeNotifier {
     try {
       final targetDevice = BluetoothDevice.fromId(cleanMac);
       log('Connecting directly to $cleanMac...');
-      await connectToDevice(targetDevice);
-      if (_isConnected) {
+      final success = await connectToDevice(targetDevice, displayName: nameLabel);
+      if (success) {
         return true;
       }
     } catch (e) {
@@ -297,8 +319,7 @@ class BleService extends ChangeNotifier {
 
     if (foundDevice != null) {
       log('Found target watch! Connecting...', type: LogType.success);
-      await connectToDevice(foundDevice);
-      return _isConnected;
+      return await connectToDevice(foundDevice, displayName: nameLabel);
     } else {
       _isConnecting = false;
       notifyListeners();
@@ -307,13 +328,17 @@ class BleService extends ChangeNotifier {
     }
   }
 
-  Future<void> connectToDevice(BluetoothDevice device) async {
+  Future<bool> connectToDevice(BluetoothDevice device, {String? displayName}) async {
     try {
-      log('Connecting to ${device.platformName.isNotEmpty ? device.platformName : device.remoteId.str}...');
-      await device.connect(autoConnect: false, timeout: const Duration(seconds: 10));
+      final devName = displayName ?? (device.platformName.isNotEmpty ? device.platformName : device.remoteId.str);
+      log('Connecting to $devName...');
+      _isConnecting = true;
+      _device = device;
+      notifyListeners();
+
+      await device.connect(autoConnect: false, timeout: const Duration(seconds: 12));
 
       log('Connected! Discovering services...', type: LogType.success);
-      _device = device;
 
       final sub = device.connectionState.listen((state) {
         if (state == BluetoothConnectionState.disconnected) {
@@ -331,12 +356,13 @@ class BleService extends ChangeNotifier {
       }
 
       final services = await device.discoverServices();
-      log('Discovered ${services.length} services');
+      for (final s in services) {
+        log('Service: ${s.uuid.str128}', type: LogType.info);
+      }
 
-      // Primary service (000001ff)
       final primaryService = services.firstWhere(
-        (s) => s.uuid == DizoUuids.servicePrimary || s.uuid.str128.toLowerCase().contains('01ff'),
-        orElse: () => throw Exception('Primary service (01ff) not found!'),
+        (s) => s.uuid == DizoUuids.servicePrimary || s.uuid.str128.toLowerCase().contains('ff01'),
+        orElse: () => throw Exception('Primary DIZO GATT service (FF01) not found!'),
       );
 
       _charFF02 = primaryService.characteristics.firstWhere(
@@ -351,8 +377,7 @@ class BleService extends ChangeNotifier {
 
       await _charFF03!.setNotifyValue(true);
       final ff03Sub = _charFF03!.onValueReceived.listen((value) {
-        log('FF03 ← ${_hex(value)}', type: LogType.data);
-        _decodeFF03(value);
+        _decodeIncomingPacket(value, 'FF03');
       });
       _subscriptions.add(ff03Sub);
       log('FF03 notification stream active ✓', type: LogType.success);
@@ -367,8 +392,7 @@ class BleService extends ChangeNotifier {
         );
         await _charFEA1!.setNotifyValue(true);
         final fea1Sub = _charFEA1!.onValueReceived.listen((value) {
-          log('FEA1 ← ${_hex(value)}', type: LogType.data);
-          _decodeFEA1(value);
+          _decodeIncomingPacket(value, 'FEA1');
         });
         _subscriptions.add(fea1Sub);
         log('FEA1 telemetry stream active ✓', type: LogType.success);
@@ -378,7 +402,6 @@ class BleService extends ChangeNotifier {
 
       _isConnected = true;
       _isConnecting = false;
-      final devName = device.platformName.isNotEmpty ? device.platformName : 'DIZO Watch D';
       await _saveLastDevice(device.remoteId.str, devName);
       notifyListeners();
 
@@ -396,11 +419,14 @@ class BleService extends ChangeNotifier {
           syncAll(isAuto: true);
         }
       });
+
+      return true;
     } catch (e) {
       log('Connection failed: $e', type: LogType.error);
       _isConnected = false;
       _isConnecting = false;
       notifyListeners();
+      return false;
     }
   }
 
@@ -415,6 +441,10 @@ class BleService extends ChangeNotifier {
     _scanResultsSub = null;
     _periodicSyncTimer?.cancel();
     _periodicSyncTimer = null;
+    _healthMeasureTimer?.cancel();
+    _healthMeasureTimer = null;
+    _isMeasuringHealth = false;
+
     for (final sub in _subscriptions) {
       sub.cancel();
     }
@@ -431,20 +461,113 @@ class BleService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _decodeFF03(List<int> val) {
-    if (val.length >= 8 && val[0] == 0x02 && val[2] == 0x1C) {
-      final isCharging = val[5] == 1;
-      final percent = val[7];
+  /// Unified packet processor handling both framed (0xAB) and direct GATT notifications
+  void _decodeIncomingPacket(List<int> data, String source) {
+    if (data.isEmpty) return;
+
+    // Check for standard HTSmart transport frame: [0xAB, flags, len_hi, len_lo, crc_hi, crc_lo, seq_hi, seq_lo, cmdId, 0x00, keyId, klen_hi, klen_lo, keyData...]
+    if (data.length >= 13 && data[0] == 0xAB) {
+      final cmdId = data[8];
+      final keyId = data[10];
+      final keyDataLength = ((data[11] << 8) | data[12]) & 0xFFFF;
+      final keyData = data.length >= 13 + keyDataLength
+          ? data.sublist(13, 13 + keyDataLength)
+          : (data.length > 13 ? data.sublist(13) : <int>[]);
+
+      _handleCmdKey(cmdId, keyId, keyData, source);
+      return;
+    }
+
+    // Direct / unframed packet format
+    if (data.length >= 3 && (data[0] == 0x02 || data[0] == 0x05)) {
+      final cmdId = data[0];
+      final keyId = data[2];
+      final keyData = data.length > 3 ? data.sublist(3) : <int>[];
+      _handleCmdKey(cmdId, keyId, keyData, source);
+      return;
+    }
+
+    // Legacy / Realtek telemetry frames
+    _decodeLegacyTelemetry(data);
+  }
+
+  void _handleCmdKey(int cmdId, int keyId, List<int> keyData, String source) {
+    // 1. TodayTotalData response: Cmd 0x05, Key 0x22 (34)
+    if (cmdId == 0x05 && keyId == 0x22 && keyData.length >= 24) {
+      final steps = _bytesToInt(keyData, 0, 4);
+      final distMeters = _bytesToInt(keyData, 4, 4).toDouble();
+      final calories = _bytesToInt(keyData, 8, 4);
+      final deepSleep = _bytesToInt(keyData, 12, 4);
+      final lightSleep = _bytesToInt(keyData, 16, 4);
+      final hr = _bytesToInt(keyData, 20, 4);
+
+      _telemetry = _telemetry.copyWith(
+        steps: steps,
+        distanceMeters: distMeters,
+        calories: calories,
+        deepSleepMinutes: deepSleep,
+        lightSleepMinutes: lightSleep,
+        heartRate: (hr >= 30 && hr <= 220) ? hr : _telemetry.heartRate,
+        lastSyncTime: DateTime.now(),
+      );
+      _saveTelemetry();
+      notifyListeners();
+      log('Today Metrics: $steps steps, ${(distMeters / 1000.0).toStringAsFixed(2)} km, $calories kcal, Sleep: ${deepSleep + lightSleep}m, HR: $hr BPM', type: LogType.success);
+      return;
+    }
+
+    // 2. Real-Time Healthy Data stream: Cmd 0x05, Key 0x24 (36)
+    if (cmdId == 0x05 && keyId == 0x24 && keyData.length >= 10) {
+      final hr = keyData.length > 6 ? keyData[6] & 0xFF : 0;
+      final spo2 = keyData.length > 7 ? keyData[7] & 0xFF : 0;
+      final dbp = keyData.length > 8 ? keyData[8] & 0xFF : 0;
+      final sbp = keyData.length > 9 ? keyData[9] & 0xFF : 0;
+      final respiratory = keyData.length > 10 ? keyData[10] & 0xFF : 0;
+      final pressure = keyData.length >= 17 ? keyData[16] & 0xFF : null;
+
+      _telemetry = _telemetry.copyWith(
+        heartRate: (hr >= 30 && hr <= 220) ? hr : _telemetry.heartRate,
+        spo2: (spo2 >= 70 && spo2 <= 100) ? spo2 : _telemetry.spo2,
+        diastolicBp: dbp > 30 ? dbp : _telemetry.diastolicBp,
+        systolicBp: sbp > 50 ? sbp : _telemetry.systolicBp,
+        respiratoryRate: respiratory > 5 ? respiratory : _telemetry.respiratoryRate,
+        pressure: pressure,
+        lastSyncTime: DateTime.now(),
+      );
+      _saveTelemetry();
+      notifyListeners();
+      log('Live Sensor: HR $hr BPM, SpO2 $spo2%, BP $sbp/$dbp mmHg', type: LogType.data);
+      return;
+    }
+
+    // 3. Battery Status: Cmd 0x02, Key 0x1C (28)
+    if (cmdId == 0x02 && keyId == 0x1C && keyData.isNotEmpty) {
+      final isCharging = keyData[0] == 1;
+      final percent = keyData.length >= 3 ? keyData[2] : (keyData.length >= 2 ? keyData[1] : 0);
       if (percent >= 0 && percent <= 100) {
         _telemetry = _telemetry.copyWith(battery: percent, lastSyncTime: DateTime.now());
         _saveTelemetry();
         notifyListeners();
         log('Battery updated: $percent% ${isCharging ? "(Charging)" : ""}', type: LogType.info);
       }
+      return;
+    }
+
+    // 4. WristbandConfig TLV response: Cmd 0x02, Key 0x21 (33)
+    if (cmdId == 0x02 && keyId == 0x21 && keyData.length >= 40) {
+      _parseWristbandConfigTLV(keyData);
+      return;
+    }
+
+    // 5. Historical sync stream chunk or finish (Cmd 0x05, Key 0x08)
+    if (cmdId == 0x05 && keyId == 0x08) {
+      // Send sync acknowledgement
+      writeFF02(HtsmartProtocol.buildSyncAckPacket(success: true), 'Sync ACK');
+      return;
     }
   }
 
-  void _decodeFEA1(List<int> data) {
+  void _decodeLegacyTelemetry(List<int> data) {
     if (data.length < 2) return;
     final packetType = data[0];
     bool changed = false;
@@ -483,7 +606,7 @@ class BleService extends ChangeNotifier {
         break;
 
       case 0x0A: // SpO2
-        if (data.length >= 3 && data[2] >= 80 && data[2] <= 100) {
+        if (data.length >= 3 && data[2] >= 70 && data[2] <= 100) {
           _telemetry = _telemetry.copyWith(spo2: data[2], lastSyncTime: DateTime.now());
           changed = true;
         }
@@ -494,6 +617,131 @@ class BleService extends ChangeNotifier {
       _saveTelemetry();
       notifyListeners();
     }
+  }
+
+  void _parseWristbandConfigTLV(List<int> bArr) {
+    try {
+      int idx = 0;
+      int brightness = _settings.brightness;
+      int timeout = _settings.screenTimeoutSeconds;
+      int vibration = _settings.vibrationIntensity;
+      bool rtw = _settings.raiseToWakeEnabled;
+      int rtwStart = _settings.raiseToWakeStartHour * 60 + _settings.raiseToWakeStartMinute;
+      int rtwEnd = _settings.raiseToWakeEndHour * 60 + _settings.raiseToWakeEndMinute;
+      bool dndAllDay = _settings.dndAllDay;
+      bool dndPeriod = _settings.dndEnabled;
+      int dndStart = _settings.dndStartHour * 60 + _settings.dndStartMinute;
+      int dndEnd = _settings.dndEndHour * 60 + _settings.dndEndMinute;
+      bool continuous = _settings.continuousHealthEnabled;
+      int contInterval = _settings.healthIntervalMinutes;
+      bool sedentary = _settings.sedentaryEnabled;
+      int sedInterval = _settings.sedentaryIntervalMinutes;
+      bool drinkWater = _settings.drinkWaterEnabled;
+      int drinkInterval = _settings.drinkWaterIntervalMinutes;
+      bool is24h = _settings.is24HourFormat;
+      bool isMetric = _settings.isMetricUnit;
+      bool isRightHand = _settings.isRightHand;
+
+      while (idx + 1 < bArr.length) {
+        final type = bArr[idx];
+        final len = bArr[idx + 1] & 0xFF;
+        final dataStart = idx + 2;
+        if (dataStart + len > bArr.length) break;
+        final itemData = bArr.sublist(dataStart, dataStart + len);
+
+        switch (type) {
+          case 122: // BrightnessVibrateConfig (0x7A)
+            if (itemData.length >= 32) {
+              timeout = itemData[0];
+              brightness = itemData[24].clamp(1, 5);
+              vibration = itemData[31].clamp(0, 2);
+            }
+            break;
+          case 45: // TurnWristLightingConfig (0x2D)
+            if (itemData.length >= 5) {
+              rtw = itemData[0] > 0;
+              rtwStart = (itemData[1] << 8) | itemData[2];
+              rtwEnd = (itemData[3] << 8) | itemData[4];
+            }
+            break;
+          case 78: // NotDisturbConfig (0x4E)
+            if (itemData.length >= 6) {
+              dndAllDay = itemData[0] == 1;
+              dndPeriod = itemData[1] == 1;
+              dndStart = (itemData[2] << 8) | itemData[3];
+              dndEnd = (itemData[4] << 8) | itemData[5];
+            }
+            break;
+          case 36: // HealthyConfig (0x24)
+            if (itemData.length >= 7) {
+              continuous = itemData[0] == 1;
+              contInterval = (itemData[5] << 8) | itemData[6];
+            }
+            break;
+          case 39: // SedentaryConfig (0x27)
+            if (itemData.length >= 7) {
+              sedentary = (itemData[0] & 1) != 0;
+              sedInterval = (itemData[5] << 8) | itemData[6];
+            }
+            break;
+          case 42: // DrinkWaterConfig (0x2A)
+            if (itemData.length >= 7) {
+              drinkWater = itemData[0] > 0;
+              drinkInterval = (itemData[1] << 8) | itemData[2];
+            }
+            break;
+          case 26: // FunctionConfig (0x1A)
+            if (itemData.length >= 2) {
+              isRightHand = (itemData[1] & 1) != 0;
+              is24h = (itemData[1] & (1 << 2)) == 0;
+              isMetric = (itemData[1] & (1 << 3)) == 0;
+            }
+            break;
+        }
+        idx = dataStart + len;
+      }
+
+      _settings = _settings.copyWith(
+        brightness: brightness,
+        screenTimeoutSeconds: timeout,
+        vibrationIntensity: vibration,
+        raiseToWakeEnabled: rtw,
+        raiseToWakeStartHour: rtwStart ~/ 60,
+        raiseToWakeStartMinute: rtwStart % 60,
+        raiseToWakeEndHour: rtwEnd ~/ 60,
+        raiseToWakeEndMinute: rtwEnd % 60,
+        dndEnabled: dndPeriod,
+        dndAllDay: dndAllDay,
+        dndStartHour: dndStart ~/ 60,
+        dndStartMinute: dndStart % 60,
+        dndEndHour: dndEnd ~/ 60,
+        dndEndMinute: dndEnd % 60,
+        continuousHealthEnabled: continuous,
+        healthIntervalMinutes: contInterval,
+        sedentaryEnabled: sedentary,
+        sedentaryIntervalMinutes: sedInterval,
+        drinkWaterEnabled: drinkWater,
+        drinkWaterIntervalMinutes: drinkInterval,
+        is24HourFormat: is24h,
+        isMetricUnit: isMetric,
+        isRightHand: isRightHand,
+      );
+      _saveSettings();
+      notifyListeners();
+      log('Watch configuration loaded ✓', type: LogType.success);
+    } catch (e) {
+      debugPrint('[BleService] Error parsing TLV: $e');
+    }
+  }
+
+  static int _bytesToInt(List<int> bytes, int offset, int length) {
+    int value = 0;
+    for (int i = 0; i < length; i++) {
+      if (offset + i < bytes.length) {
+        value |= (bytes[offset + i] & 0xFF) << (8 * i);
+      }
+    }
+    return value;
   }
 
   Future<void> writeFF02(List<int> bytes, String label) async {
@@ -515,7 +763,7 @@ class BleService extends ChangeNotifier {
     }
   }
 
-  /// Unified synchronization of all telemetry (time, battery, steps, heart rate, sleep)
+  /// Unified synchronization of all watch metrics (Time, Battery, Today Metrics, Config, Health)
   Future<void> syncAll({bool isAuto = false}) async {
     if (!_isConnected || _isSyncing) return;
     _isSyncing = true;
@@ -532,16 +780,16 @@ class BleService extends ChangeNotifier {
       await queryBattery();
       await Future.delayed(const Duration(milliseconds: 150));
 
-      // 3. Activity / Steps sync
-      await syncSteps();
+      // 3. Today's total metrics (Steps, Distance, Calories, Sleep, Heart Rate)
+      await queryTodayMetrics();
       await Future.delayed(const Duration(milliseconds: 200));
 
-      // 4. Health sync (HR & SpO2)
-      await syncHealth();
+      // 4. Watch configuration query (Brightness, Reminders, Preferences)
+      await queryWatchConfig();
       await Future.delayed(const Duration(milliseconds: 200));
 
-      // 5. Sleep sync
-      await syncSleep();
+      // 5. Instant sensor health sample (HR & SpO2)
+      await triggerLiveHealthSample();
 
       _telemetry = _telemetry.copyWith(lastSyncTime: DateTime.now());
       await _saveTelemetry();
@@ -557,21 +805,7 @@ class BleService extends ChangeNotifier {
   Future<void> syncTime() async {
     final now = DateTime.now();
     final packet = HtsmartProtocol.buildTimeSyncPacket(now, seq: 1);
-    await writeFF02(packet, 'Time Sync (HTSmart)');
-  }
-
-  Future<void> syncSteps() async {
-    await writeFF02([0x03, 0x01], '🚶 Steps sync');
-  }
-
-  Future<void> syncHealth() async {
-    await writeFF02([0x03, 0x03], '❤️ HR sync');
-    await Future.delayed(const Duration(milliseconds: 250));
-    await writeFF02([0x03, 0x04], '🩸 SpO2 sync');
-  }
-
-  Future<void> syncSleep() async {
-    await writeFF02([0x03, 0x02], '😴 Sleep sync');
+    await writeFF02(packet, 'Time Sync');
   }
 
   Future<void> queryBattery() async {
@@ -579,10 +813,260 @@ class BleService extends ChangeNotifier {
     await writeFF02(packet, 'Battery Query');
   }
 
+  Future<void> queryTodayMetrics() async {
+    final packet = HtsmartProtocol.buildTodayTotalDataPacket();
+    await writeFF02(packet, 'Today Total Metrics');
+  }
+
+  Future<void> queryWatchConfig() async {
+    final packet = HtsmartProtocol.buildConfigQueryPacket();
+    await writeFF02(packet, 'Watch Config Query');
+  }
+
+  /// Triggers a brief live health sensor sample (HR + SpO2)
+  Future<void> triggerLiveHealthSample() async {
+    final packet = HtsmartProtocol.buildRealTimeHealthPacket(healthyType: 0x07, durationMinutes: 1, enable: true);
+    await writeFF02(packet, 'Health Sample Request');
+  }
+
+  /// Starts continuous real-time health measurement with live UI countdown
+  Future<void> startLiveHealthMeasurement({int durationSeconds = 30}) async {
+    if (!_isConnected || _isMeasuringHealth) return;
+    _isMeasuringHealth = true;
+    notifyListeners();
+    log('Starting real-time health sensor measurement...');
+
+    final packet = HtsmartProtocol.buildRealTimeHealthPacket(healthyType: 0x07, durationMinutes: 1, enable: true);
+    await writeFF02(packet, 'Start Live Health Measurement');
+
+    _healthMeasureTimer?.cancel();
+    _healthMeasureTimer = Timer(Duration(seconds: durationSeconds), () {
+      stopLiveHealthMeasurement();
+    });
+  }
+
+  /// Stops real-time health measurement
+  Future<void> stopLiveHealthMeasurement() async {
+    _healthMeasureTimer?.cancel();
+    _healthMeasureTimer = null;
+    _isMeasuringHealth = false;
+    notifyListeners();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildRealTimeHealthPacket(healthyType: 0x07, durationMinutes: 0, enable: false);
+      await writeFF02(packet, 'Stop Live Health Measurement');
+      log('Live health measurement finished ✓', type: LogType.info);
+    }
+  }
+
+  // --- Watch Options & Configuration Controls ---
+
+  Future<void> updateBrightnessAndTimeout({
+    required int brightness,
+    required int timeoutSeconds,
+    int vibration = 1,
+  }) async {
+    _settings = _settings.copyWith(
+      brightness: brightness,
+      screenTimeoutSeconds: timeoutSeconds,
+      vibrationIntensity: vibration,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildBrightnessVibratePacket(
+        brightness: brightness,
+        timeoutSeconds: timeoutSeconds,
+        vibration: vibration,
+      );
+      await writeFF02(packet, 'Update Brightness & Timeout');
+    }
+  }
+
+  Future<void> updateRaiseToWake({
+    required bool enabled,
+    int startHour = 8,
+    int startMin = 0,
+    int endHour = 22,
+    int endMin = 0,
+  }) async {
+    _settings = _settings.copyWith(
+      raiseToWakeEnabled: enabled,
+      raiseToWakeStartHour: startHour,
+      raiseToWakeStartMinute: startMin,
+      raiseToWakeEndHour: endHour,
+      raiseToWakeEndMinute: endMin,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildTurnWristPacket(
+        enable: enabled,
+        startMinute: startHour * 60 + startMin,
+        endMinute: endHour * 60 + endMin,
+      );
+      await writeFF02(packet, 'Update Raise to Wake');
+    }
+  }
+
+  Future<void> updateDoNotDisturb({
+    required bool enabled,
+    bool allDay = false,
+    int startHour = 22,
+    int startMin = 0,
+    int endHour = 7,
+    int endMin = 0,
+  }) async {
+    _settings = _settings.copyWith(
+      dndEnabled: enabled,
+      dndAllDay: allDay,
+      dndStartHour: startHour,
+      dndStartMinute: startMin,
+      dndEndHour: endHour,
+      dndEndMinute: endMin,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildNotDisturbPacket(
+        enableAllDay: allDay,
+        enablePeriod: enabled,
+        startMinute: startHour * 60 + startMin,
+        endMinute: endHour * 60 + endMin,
+      );
+      await writeFF02(packet, 'Update Do Not Disturb');
+    }
+  }
+
+  Future<void> updateContinuousHealth({
+    required bool enabled,
+    int intervalMinutes = 30,
+  }) async {
+    _settings = _settings.copyWith(
+      continuousHealthEnabled: enabled,
+      healthIntervalMinutes: intervalMinutes,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildHealthyMonitorPacket(
+        enable: enabled,
+        intervalMinutes: intervalMinutes,
+      );
+      await writeFF02(packet, 'Update Continuous Health');
+    }
+  }
+
+  Future<void> updateSedentaryReminder({
+    required bool enabled,
+    int intervalMinutes = 60,
+    int startHour = 9,
+    int endHour = 18,
+    bool dndLunch = true,
+  }) async {
+    _settings = _settings.copyWith(
+      sedentaryEnabled: enabled,
+      sedentaryIntervalMinutes: intervalMinutes,
+      sedentaryStartHour: startHour,
+      sedentaryEndHour: endHour,
+      sedentaryDndEnabled: dndLunch,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildSedentaryPacket(
+        enable: enabled,
+        dndLunch: dndLunch,
+        startMinute: startHour * 60,
+        endMinute: endHour * 60,
+        intervalMinutes: intervalMinutes,
+      );
+      await writeFF02(packet, 'Update Sedentary Reminder');
+    }
+  }
+
+  Future<void> updateDrinkWaterReminder({
+    required bool enabled,
+    int intervalMinutes = 60,
+    int startHour = 9,
+    int endHour = 20,
+  }) async {
+    _settings = _settings.copyWith(
+      drinkWaterEnabled: enabled,
+      drinkWaterIntervalMinutes: intervalMinutes,
+      drinkWaterStartHour: startHour,
+      drinkWaterEndHour: endHour,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildDrinkWaterPacket(
+        enable: enabled,
+        intervalMinutes: intervalMinutes,
+        startMinute: startHour * 60,
+        endMinute: endHour * 60,
+      );
+      await writeFF02(packet, 'Update Drink Water Reminder');
+    }
+  }
+
+  Future<void> updatePreferences({
+    bool? is24Hour,
+    bool? isMetric,
+    bool? isRightHand,
+    bool? weather,
+    bool? disconnectReminder,
+  }) async {
+    _settings = _settings.copyWith(
+      is24HourFormat: is24Hour,
+      isMetricUnit: isMetric,
+      isRightHand: isRightHand,
+      weatherEnabled: weather,
+      disconnectReminder: disconnectReminder,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildFunctionConfigPacket(
+        is24Hour: _settings.is24HourFormat,
+        isMetric: _settings.isMetricUnit,
+        isRightHand: _settings.isRightHand,
+        weatherEnabled: _settings.weatherEnabled,
+        disconnectReminder: _settings.disconnectReminder,
+      );
+      await writeFF02(packet, 'Update Watch Preferences');
+    }
+  }
+
   Future<void> findWatch() async {
-    log('Triggering watch vibration...');
+    log('Triggering watch vibration alert...');
     final packet = HtsmartProtocol.buildFindWatchPacket();
     await writeFF02(packet, 'Find Watch (Vibrate)');
+  }
+
+  Future<void> restartWatch() async {
+    log('Restarting watch...');
+    final packet = HtsmartProtocol.buildRestartPacket();
+    await writeFF02(packet, 'Restart Watch');
+  }
+
+  Future<void> turnOffWatch() async {
+    log('Powering off watch...');
+    final packet = HtsmartProtocol.buildTurnOffPacket();
+    await writeFF02(packet, 'Turn Off Watch');
+  }
+
+  Future<void> resetWatch() async {
+    log('Factory resetting watch...');
+    final packet = HtsmartProtocol.buildResetPacket();
+    await writeFF02(packet, 'Factory Reset Watch');
   }
 
   /// Switches active dial slot on watch (e.g. 4 for custom dial)
@@ -592,9 +1076,13 @@ class BleService extends ChangeNotifier {
     await writeFF02(packet, 'Switch Dial (#$dialPosition)');
   }
 
+  static String _hex(List<int> bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
+
   @override
   void dispose() {
     _periodicSyncTimer?.cancel();
+    _healthMeasureTimer?.cancel();
     for (final sub in _subscriptions) {
       sub.cancel();
     }

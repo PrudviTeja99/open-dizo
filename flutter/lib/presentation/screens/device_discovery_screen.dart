@@ -149,7 +149,7 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen>
               if (isScanning)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  color: Colors.cyan.withOpacity(0.08),
+                  color: Colors.cyan.withValues(alpha: 0.08),
                   child: Row(
                     children: [
                       RotationTransition(
@@ -266,7 +266,7 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: isProminent ? Colors.cyanAccent.withOpacity(0.4) : Colors.white12,
+          color: isProminent ? Colors.cyanAccent.withValues(alpha: 0.4) : Colors.white12,
           width: isProminent ? 1.5 : 1,
         ),
       ),
@@ -279,7 +279,7 @@ class _DeviceDiscoveryScreenState extends State<DeviceDiscoveryScreen>
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: isProminent ? Colors.cyan.withOpacity(0.15) : Colors.white10,
+                color: isProminent ? Colors.cyan.withValues(alpha: 0.15) : Colors.white10,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(

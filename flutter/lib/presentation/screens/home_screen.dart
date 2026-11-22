@@ -6,7 +6,10 @@ import '../widgets/status_header.dart';
 import '../widgets/actions_card.dart';
 import '../widgets/telemetry_card.dart';
 import 'dial_studio_screen.dart';
+import 'watch_settings_screen.dart';
 import '../dialogs/connect_device_modal.dart';
+import '../dialogs/app_update_dialog.dart';
+import '../../services/app_update_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -55,6 +58,22 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Watch Settings',
+            icon: const Icon(Icons.tune_rounded, size: 22, color: AppTheme.accent),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => WatchSettingsScreen(bleService: _bleService),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Check for Updates',
+            icon: const Icon(Icons.system_update_alt_rounded, size: 22, color: AppTheme.accent),
+            onPressed: () => AppUpdateDialog.show(context),
+          ),
+          IconButton(
             tooltip: 'Pair / Switch Device',
             icon: const Icon(Icons.devices_rounded, size: 22, color: AppTheme.accent),
             onPressed: isBusy ? null : () => ConnectDeviceModal.show(context, _bleService),
@@ -81,16 +100,72 @@ class _HomeScreenState extends State<HomeScreen> {
               StatusHeader(bleService: _bleService),
               const SizedBox(height: 14),
 
-              // 2. Central Health & Activity Metrics Display (Hero Activity + Vitals Grid)
+              // 2. Central Health & Activity Metrics Display (Hero Activity + Vitals Grid + Live Sensor Measure)
               TelemetryCard(
                 telemetry: _bleService.telemetry,
                 isConnected: isConnected,
                 isSyncing: _bleService.isSyncing,
+                bleService: _bleService,
                 onRefresh: () => _bleService.syncAll(),
               ),
               const SizedBox(height: 14),
 
-              // 3. Watch Face Studio Banner Card
+              // 3. Watch Settings & Hardware Options Banner
+              InkWell(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => WatchSettingsScreen(bleService: _bleService),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F303B), Color(0xFF14242B)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.cyanAccent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.tune_rounded, color: Colors.cyanAccent, size: 26),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Watch Settings & Hardware Options',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Brightness, timeout, raise to wake, DND, reminders & reboot',
+                              style: TextStyle(fontSize: 12, color: Colors.cyan[100]),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios, color: Colors.cyanAccent, size: 16),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // 4. Watch Face Studio Banner Card
               InkWell(
                 onTap: () {
                   Navigator.of(context).push(
@@ -101,7 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
                 borderRadius: BorderRadius.circular(18),
                 child: Container(
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF311042), Color(0xFF1F1D36)],
@@ -119,20 +194,20 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.purpleAccent.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.palette_outlined, color: Colors.purpleAccent, size: 28),
+                        child: const Icon(Icons.palette_outlined, color: Colors.purpleAccent, size: 26),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
                               'Watch Face Studio',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              'Custom wallpapers, pinch-to-zoom crop & clock positioning',
+                              'Custom wallpapers, pinch-to-zoom crop, clock styles & positioning',
                               style: TextStyle(fontSize: 12, color: Colors.purple[100]),
                             ),
                           ],
@@ -145,14 +220,58 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 14),
 
-              // 4. Quick Tools Bar (Vibrate / Find Watch & Full Sync)
+              // 5. Quick Tools Bar (Vibrate / Find Watch & Full Sync)
               ActionsCard(bleService: _bleService),
+              const SizedBox(height: 16),
+
+              // 6. In-App Updates Tile (Manual Check & Install from GitHub Releases)
+              InkWell(
+                onTap: () => AppUpdateDialog.show(context),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceLight,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.system_update_alt_rounded, color: AppTheme.accent, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Check for App Updates',
+                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white),
+                            ),
+                            Text(
+                              'GitHub Releases · Installed v${AppUpdateService.currentVersion}',
+                              style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 24),
 
-              // 5. Clean Footer
+              // 7. Clean Footer
               Center(
                 child: Text(
-                  'Open DIZO BLE Companion\n100% Local · No cloud telemetry · Direct BLE GATT',
+                  'Open DIZO BLE Companion\n100% Local · Clean Protocol Architecture · Direct BLE GATT',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                 ),

@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter/material.dart' show Color, Colors;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:image/image.dart' as img;
 import '../core/utils/crc16.dart';
 import '../models/clock_style.dart';
 
-/// Injects custom wallpaper and digital clock position into DIZO Watch D dial template
+/// Injects custom wallpaper and digital clock position/color into DIZO Watch D dial template
 class DialBuilderService {
   static const String _templateAsset = 'assets/ota.bin';
 
@@ -14,6 +15,8 @@ class DialBuilderService {
     required Uint8List wallpaperPngBytes,
     ClockPosition clockPosition = ClockPosition.center,
     bool isClockVisible = true,
+    Color textColor = Colors.white,
+    int hardwareStyleIndex = 1,
   }) async {
     // 1. Load base template from Flutter assets
     final ByteData assetData = await rootBundle.load(_templateAsset);
@@ -49,23 +52,46 @@ class DialBuilderService {
       binData.setRange(rowAddr, rowAddr + 320, thumbRows[y]);
     }
 
-    // 5. Position Digital Clock (Support free coordinates or hide off-screen if removed)
+    // 5. Position Digital Clock (120x73 box clamped within 240x286 LCD screen)
     final int addrOffset = bd.getUint32(1552, Endian.little);
     final int offsetC = addrOffset + 1536;
     final int controlOffset = bd.getUint32(offsetC, Endian.little);
     final int controlSize = bd.getUint16(offsetC + 6, Endian.little);
 
-    final int targetX = isClockVisible ? clockPosition.x : -400;
-    final int targetY = isClockVisible ? clockPosition.y : -400;
+    final int targetX = isClockVisible ? clockPosition.x.clamp(0, 120) : -400;
+    final int targetY = isClockVisible ? clockPosition.y.clamp(0, 213) : -400;
 
     // Update cVar.q[0] clock coordinates
     bd.setInt16(addrOffset + 1536 + 38, targetX, Endian.little);
     bd.setInt16(addrOffset + 1536 + 40, targetY, Endian.little);
 
     // Update Control #4 (TIME_STYLE) clock coordinates
-    final int ctrl4Addr = controlOffset + 4 * controlSize + 1536 + 4;
+    final int ctrl4Base = controlOffset + 4 * controlSize + 1536;
+    final int ctrl4Addr = ctrl4Base + 4;
     bd.setInt16(ctrl4Addr, targetX, Endian.little);
     bd.setInt16(ctrl4Addr + 2, targetY, Endian.little);
+
+    // Update RGB Text Color at offset 1544 (clean protocol specification)
+    final int argb = textColor.toARGB32();
+    final int r = (argb >> 16) & 0xFF;
+    final int g = (argb >> 8) & 0xFF;
+    final int b = argb & 0xFF;
+    binData[1544] = b;
+    binData[1545] = g;
+    binData[1546] = r;
+
+    // Map to closest hardware style index in Control #4
+    int resolvedStyle = hardwareStyleIndex;
+    if (resolvedStyle == 1) {
+      if (r > 200 && g > 200 && b < 100) {
+        resolvedStyle = 4; // Yellow (Bitmap #179)
+      } else if (g > 180 && r < 150) {
+        resolvedStyle = 2; // Green / Cyan (Bitmap #177)
+      } else if (r < 80 && g < 80 && b < 80) {
+        resolvedStyle = 3; // Slate / Dark (Bitmap #178)
+      }
+    }
+    binData[ctrl4Base + 18] = resolvedStyle.clamp(0, 4);
 
     // 6. Recalculate CRC16 and update offset 518..519
     _updateDialCrc16(binData);

@@ -307,7 +307,7 @@ class _QrScannerScreenState extends State<QrScannerScreen>
               children: [
                 ColorFiltered(
                   colorFilter: ColorFilter.mode(
-                    Colors.black.withOpacity(0.65),
+                    Colors.black.withValues(alpha: 0.65),
                     BlendMode.srcOut,
                   ),
                   child: Stack(
@@ -363,7 +363,7 @@ class _QrScannerScreenState extends State<QrScannerScreen>
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.cyanAccent.withOpacity(0.8),
+                                  color: Colors.cyanAccent.withValues(alpha: 0.8),
                                   blurRadius: 8,
                                   spreadRadius: 1,
                                 ),
@@ -384,7 +384,7 @@ class _QrScannerScreenState extends State<QrScannerScreen>
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
+                      color: Colors.black.withValues(alpha: 0.7),
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(color: Colors.white24),
                     ),
@@ -409,7 +409,7 @@ class _QrScannerScreenState extends State<QrScannerScreen>
                 // Connecting overlay indicator
                 if (_isConnecting)
                   Container(
-                    color: Colors.black.withOpacity(0.75),
+                    color: Colors.black.withValues(alpha: 0.75),
                     child: Center(
                       child: Container(
                         padding: const EdgeInsets.all(24),
