@@ -9,6 +9,7 @@ import '../widgets/time_sync_card.dart';
 import '../widgets/actions_card.dart';
 import '../widgets/telemetry_card.dart';
 import '../widgets/ble_log_card.dart';
+import 'dial_studio_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -110,6 +111,32 @@ class _HomeScreenState extends State<HomeScreen> {
               currentDate: _currentDate,
               isConnected: isConnected,
               onSyncTime: () => _bleService.syncTime(),
+            ),
+            const SizedBox(height: 12),
+
+            // Watch Face Studio Entry Card
+            Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.palette_outlined, color: AppTheme.accent, size: 26),
+                ),
+                title: const Text('Watch Face Studio', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                subtitle: const Text('Customize clock styles, adjust wallpaper & flash dials', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => DialStudioScreen(bleService: _bleService),
+                    ),
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 12),
 

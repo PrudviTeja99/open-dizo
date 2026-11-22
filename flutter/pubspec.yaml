@@ -1,5 +1,5 @@
 name: dizo_watch_sync
-description: Minimal BLE time sync app for DIZO Watch D. No cloud, no accounts.
+description: Open BLE companion and custom watch face studio for DIZO Watch D.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -12,6 +12,11 @@ dependencies:
   flutter_blue_plus: ^1.35.5
   permission_handler: ^11.3.1
   intl: ^0.19.0
+  image: ^4.3.0
+  file_picker: ^8.1.6
+  path_provider: ^2.1.5
+  shared_preferences: ^2.3.3
+  pointycastle: ^3.9.1
 
 dev_dependencies:
   flutter_test:
@@ -20,3 +25,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/ota.bin
