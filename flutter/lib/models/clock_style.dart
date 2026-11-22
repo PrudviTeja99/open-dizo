@@ -33,6 +33,85 @@ class ClockPosition {
         right,
       ];
 
+  int getXForSize(ClockSize size) {
+    if (isCustom) return x;
+    switch (label) {
+      case 'Center':
+      case 'Top':
+      case 'Bottom':
+        switch (size) {
+          case ClockSize.small:
+            return 75;
+          case ClockSize.medium:
+            return 60;
+          case ClockSize.large:
+            return 45;
+        }
+      case 'Left':
+        switch (size) {
+          case ClockSize.small:
+            return 16;
+          case ClockSize.medium:
+            return 16;
+          case ClockSize.large:
+            return 12;
+        }
+      case 'Right':
+        switch (size) {
+          case ClockSize.small:
+            return 134;
+          case ClockSize.medium:
+            return 102;
+          case ClockSize.large:
+            return 78;
+        }
+      default:
+        return x;
+    }
+  }
+
+  int getYForSize(ClockSize size) {
+    if (isCustom) return y;
+    switch (label) {
+      case 'Center':
+      case 'Left':
+      case 'Right':
+        switch (size) {
+          case ClockSize.small:
+            return 113;
+          case ClockSize.medium:
+            return 103;
+          case ClockSize.large:
+            return 95;
+        }
+      case 'Top':
+        switch (size) {
+          case ClockSize.small:
+            return 14;
+          case ClockSize.medium:
+            return 8;
+          case ClockSize.large:
+            return 6;
+        }
+      case 'Bottom':
+        switch (size) {
+          case ClockSize.small:
+            return 210;
+          case ClockSize.medium:
+            return 198;
+          case ClockSize.large:
+            return 184;
+        }
+      default:
+        return y;
+    }
+  }
+
+  ClockPosition forSize(ClockSize size) {
+    if (isCustom) return this;
+    return ClockPosition(label, getXForSize(size), getYForSize(size), isCustom: false);
+  }
+
   ClockPosition copyWith({int? x, int? y, String? label, bool? isCustom}) {
     return ClockPosition(
       label ?? this.label,

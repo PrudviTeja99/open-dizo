@@ -26,8 +26,8 @@ class DialStudioScreen extends StatefulWidget {
 class _DialStudioScreenState extends State<DialStudioScreen> {
   final WallpaperStorageService _storageService = WallpaperStorageService();
   WallpaperItem? _selectedWallpaper;
-  ClockStyle _clockStyle = const ClockStyle(
-    position: ClockPosition.center,
+  ClockStyle _clockStyle = ClockStyle(
+    position: ClockPosition.center.forSize(ClockSize.medium),
     size: ClockSize.medium,
     isVisible: true,
     textColor: Colors.white,
@@ -474,7 +474,10 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                                 fontSize: 12,
                               ),
                               onSelected: (_) => setState(() {
-                                _clockStyle = _clockStyle.copyWith(size: size);
+                                final newPos = _clockStyle.position.isCustom
+                                    ? _clockStyle.position
+                                    : _clockStyle.position.forSize(size);
+                                _clockStyle = _clockStyle.copyWith(size: size, position: newPos);
                               }),
                             ),
                           );
@@ -503,7 +506,9 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                                   fontSize: 12,
                                 ),
                                 onSelected: (_) => setState(() {
-                                  _clockStyle = _clockStyle.copyWith(position: pos);
+                                  _clockStyle = _clockStyle.copyWith(
+                                    position: pos.forSize(_clockStyle.size),
+                                  );
                                   _isDraggingClock = false;
                                 }),
                               ),

@@ -42,12 +42,14 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
   @override
   void didUpdateWidget(WatchCanvasPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.clockStyle.position != widget.clockStyle.position) {
+    if (oldWidget.clockStyle.position != widget.clockStyle.position ||
+        oldWidget.clockStyle.size != widget.clockStyle.size) {
       _currentX = widget.clockStyle.position.x.toDouble();
       _currentY = widget.clockStyle.position.y.toDouble();
-      // If a preset was selected externally, deselect
+      // If a preset was selected externally or size changed while on a preset, deselect
       if (!widget.clockStyle.position.isCustom) {
         _isSelected = false;
+        widget.onDragStateChanged?.call(false);
       }
     }
   }
@@ -241,8 +243,8 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
               HapticFeedback.vibrate();
               setState(() {
                 _isSelected = true;
-                _currentX = widget.clockStyle.position.x.toDouble();
-                _currentY = widget.clockStyle.position.y.toDouble();
+                _currentX = widget.clockStyle.position.getXForSize(widget.clockStyle.size).toDouble();
+                _currentY = widget.clockStyle.position.getYForSize(widget.clockStyle.size).toDouble();
                 _onDragStart(details.globalPosition);
               });
               widget.onDragStateChanged?.call(true);
@@ -358,11 +360,47 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
       ),
     );
 
-    // Always use exact Positioned coordinates to ensure seamless gesture tracking
-    return Positioned(
-      left: widget.clockStyle.position.x.toDouble().clamp(0.0, 160.0),
-      top: widget.clockStyle.position.y.toDouble().clamp(0.0, 220.0),
-      child: clockContent,
+    // If Custom Position or in Active Selection Mode, use Positioned coordinates
+    if (widget.clockStyle.position.isCustom || _isSelected) {
+      return Positioned(
+        left: _isSelected
+            ? _currentX.clamp(0.0, 160.0)
+            : widget.clockStyle.position.x.toDouble().clamp(0.0, 160.0),
+        top: _isSelected
+            ? _currentY.clamp(0.0, 220.0)
+            : widget.clockStyle.position.y.toDouble().clamp(0.0, 220.0),
+        child: clockContent,
+      );
+    }
+
+    // Otherwise align perfectly by Preset (Center, Top, Bottom, Left, Right)
+    Alignment alignment;
+    switch (widget.clockStyle.position.label) {
+      case 'Center':
+        alignment = Alignment.center;
+        break;
+      case 'Top':
+        alignment = Alignment.topCenter;
+        break;
+      case 'Bottom':
+        alignment = Alignment.bottomCenter;
+        break;
+      case 'Left':
+        alignment = Alignment.centerLeft;
+        break;
+      case 'Right':
+        alignment = Alignment.centerRight;
+        break;
+      default:
+        alignment = Alignment.center;
+    }
+
+    return Align(
+      alignment: alignment,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: clockContent,
+      ),
     );
   }
 
