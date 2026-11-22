@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'flutter/**'
-      - '.github/workflows/**'
+      - '.github/**'
     tags:
       - 'v*'
   pull_request:
@@ -14,7 +14,7 @@ on:
       - main
     paths:
       - 'flutter/**'
-      - '.github/workflows/**'
+      - '.github/**'
   workflow_dispatch:
 
 permissions:
