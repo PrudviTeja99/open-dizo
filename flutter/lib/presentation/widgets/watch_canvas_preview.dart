@@ -46,10 +46,9 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
         oldWidget.clockStyle.size != widget.clockStyle.size) {
       _currentX = widget.clockStyle.position.x.toDouble();
       _currentY = widget.clockStyle.position.y.toDouble();
-      // If a preset was selected externally or size changed while on a preset, deselect
+      // If a preset was selected externally or size changed while on a preset, deselect locally
       if (!widget.clockStyle.position.isCustom) {
         _isSelected = false;
-        widget.onDragStateChanged?.call(false);
       }
     }
   }
@@ -363,6 +362,7 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
     // If Custom Position or in Active Selection Mode, use Positioned coordinates
     if (widget.clockStyle.position.isCustom || _isSelected) {
       return Positioned(
+        key: const ValueKey('custom_clock'),
         left: _isSelected
             ? _currentX.clamp(0.0, 160.0)
             : widget.clockStyle.position.x.toDouble().clamp(0.0, 160.0),
@@ -395,11 +395,14 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
         alignment = Alignment.center;
     }
 
-    return Align(
-      alignment: alignment,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: clockContent,
+    return Positioned.fill(
+      key: const ValueKey('preset_clock'),
+      child: Align(
+        alignment: alignment,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: clockContent,
+        ),
       ),
     );
   }
