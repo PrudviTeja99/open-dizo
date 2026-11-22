@@ -17,6 +17,8 @@ class DialBuilderService {
     bool isClockVisible = true,
     Color textColor = Colors.white,
     int hardwareStyleIndex = 1,
+    int clockWidth = 120,
+    int clockHeight = 73,
   }) async {
     // 1. Load base template from Flutter assets
     final ByteData assetData = await rootBundle.load(_templateAsset);
@@ -58,8 +60,10 @@ class DialBuilderService {
     final int controlOffset = bd.getUint32(offsetC, Endian.little);
     final int controlSize = bd.getUint16(offsetC + 6, Endian.little);
 
-    final int targetX = isClockVisible ? clockPosition.x.clamp(0, 120) : -400;
-    final int targetY = isClockVisible ? clockPosition.y.clamp(0, 213) : -400;
+    final int maxX = (240 - clockWidth).clamp(0, 240);
+    final int maxY = (286 - clockHeight).clamp(0, 286);
+    final int targetX = isClockVisible ? clockPosition.x.clamp(0, maxX) : -400;
+    final int targetY = isClockVisible ? clockPosition.y.clamp(0, maxY) : -400;
 
     // Update cVar.q[0] clock coordinates
     bd.setInt16(addrOffset + 1536 + 38, targetX, Endian.little);

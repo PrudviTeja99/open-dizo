@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_dizo/services/htsmart_protocol.dart';
 import 'package:open_dizo/models/watch_telemetry.dart';
+import 'package:open_dizo/models/clock_style.dart';
 
 void main() {
   group('HtsmartProtocol & Telemetry Decoding Tests', () {
@@ -185,6 +186,58 @@ void main() {
 
       expect(invHigher, 125);
       expect(invLower, 82);
+    });
+
+    test('ClockStyle dimensions adapt between horizontal and vertical outer blocks', () {
+      const horizontalClock = ClockStyle(isStacked: false);
+      expect(horizontalClock.isVertical, false);
+      expect(horizontalClock.boxWidth, 120.0);
+      expect(horizontalClock.boxHeight, 73.0);
+      expect(horizontalClock.maxTargetX, 120);
+      expect(horizontalClock.maxTargetY, 213);
+
+      const verticalClock = ClockStyle(isStacked: true);
+      expect(verticalClock.isVertical, true);
+      expect(verticalClock.boxWidth, 78.0);
+      expect(verticalClock.boxHeight, 126.0);
+      expect(verticalClock.maxTargetX, 162);
+      expect(verticalClock.maxTargetY, 160);
+
+      final horizontalPresets = ClockPosition.getPresets(isVertical: false);
+      expect(horizontalPresets.length, 5);
+      expect(horizontalPresets.first.x, 60);
+      expect(horizontalPresets.first.y, 106);
+
+      final verticalPresets = ClockPosition.getPresets(isVertical: true);
+      expect(verticalPresets.length, 5);
+      expect(verticalPresets.first.x, 81);
+      expect(verticalPresets.first.y, 80);
+    });
+
+    test('ClockTemplateStyle gallery includes user requested font styles', () {
+      final gallery = ClockTemplateStyle.gallery;
+      expect(gallery.length, greaterThanOrEqualTo(8));
+
+      final athletic = gallery.firstWhere((s) => s.id == 'athletic_stacked');
+      expect(athletic.fontFamily, ClockFontFamily.athletic);
+      expect(athletic.hasOutlineMinutes, true);
+      expect(athletic.isStacked, true);
+
+      final block3d = gallery.firstWhere((s) => s.id == 'block_retro');
+      expect(block3d.fontFamily, ClockFontFamily.block3d);
+      expect(block3d.has3dShadow, true);
+
+      final casual = gallery.firstWhere((s) => s.id == 'casual_rounded');
+      expect(casual.fontFamily, ClockFontFamily.casual);
+
+      final pixel = gallery.firstWhere((s) => s.id == 'pixel_arcade');
+      expect(pixel.fontFamily, ClockFontFamily.pixel);
+
+      final techno = gallery.firstWhere((s) => s.id == 'cyber_techno');
+      expect(techno.fontFamily, ClockFontFamily.techno);
+
+      final minimal = gallery.firstWhere((s) => s.id == 'minimal_slim');
+      expect(minimal.fontFamily, ClockFontFamily.minimal);
     });
   });
 }

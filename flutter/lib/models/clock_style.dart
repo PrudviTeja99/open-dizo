@@ -1,14 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 enum ClockSize {
-  small('Small', 28, 0.85),
-  standard('Standard', 34, 1.0),
-  large('Large', 40, 1.15);
+  small('Small', 26, 36, 0.85),
+  standard('Standard', 32, 44, 1.0),
+  large('Large', 38, 50, 1.18);
 
   final String label;
-  final double fontSize;
+  final double horizontalFontSize;
+  final double verticalFontSize;
   final double scale;
-  const ClockSize(this.label, this.fontSize, this.scale);
+  const ClockSize(this.label, this.horizontalFontSize, this.verticalFontSize, this.scale);
+
+  double fontSize(bool isVertical) => isVertical ? verticalFontSize : horizontalFontSize;
+}
+
+enum ClockFontFamily {
+  modern('Modern', 'Clean digital sans'),
+  athletic('Athletic', 'Tall condensed'),
+  block3d('Chunky 3D', 'Retro pop block'),
+  casual('Casual', 'Playful rounded'),
+  pixel('Arcade', '8-bit pixel matrix'),
+  techno('Cyber', 'Futuristic techno'),
+  minimal('Minimal', 'Sleek geometric lines'),
+  neon('Neon', 'Digital glow mono');
+
+  final String label;
+  final String description;
+  const ClockFontFamily(this.label, this.description);
 }
 
 class ClockTemplateStyle {
@@ -16,74 +35,144 @@ class ClockTemplateStyle {
   final String name;
   final String subtitle;
   final Color primaryColor;
+  final Color? secondaryColor;
   final int hardwareStyleIndex;
   final bool isStacked;
+  final ClockFontFamily fontFamily;
+  final bool hasOutlineMinutes;
+  final bool has3dShadow;
 
   const ClockTemplateStyle({
     required this.id,
     required this.name,
     required this.subtitle,
     required this.primaryColor,
+    this.secondaryColor,
     required this.hardwareStyleIndex,
     this.isStacked = false,
+    this.fontFamily = ClockFontFamily.modern,
+    this.hasOutlineMinutes = false,
+    this.has3dShadow = false,
   });
 
   static const modern = ClockTemplateStyle(
     id: 'modern',
-    name: 'Modern Digital',
-    subtitle: 'Crisp White',
+    name: 'Modern Clean',
+    subtitle: 'ID: 2822 • Crisp White',
     primaryColor: Colors.white,
     hardwareStyleIndex: 1,
+    fontFamily: ClockFontFamily.modern,
+    isStacked: false,
   );
 
-  static const cyber = ClockTemplateStyle(
-    id: 'cyber',
-    name: 'Cyber Neon',
-    subtitle: 'Emerald Mint',
+  static const athletic = ClockTemplateStyle(
+    id: 'athletic_stacked',
+    name: 'Athletic Dual',
+    subtitle: 'ID: 2832 • Outline Accent',
+    primaryColor: Colors.white,
+    secondaryColor: Color(0xFFFF9100),
+    hardwareStyleIndex: 4,
+    fontFamily: ClockFontFamily.athletic,
+    isStacked: true,
+    hasOutlineMinutes: true,
+  );
+
+  static const block3d = ClockTemplateStyle(
+    id: 'block_retro',
+    name: 'Chunky 3D',
+    subtitle: 'ID: 2809 • Retro Pop',
+    primaryColor: Color(0xFFFF6D00),
+    secondaryColor: Color(0xFF311B92),
+    hardwareStyleIndex: 4,
+    fontFamily: ClockFontFamily.block3d,
+    isStacked: true,
+    has3dShadow: true,
+  );
+
+  static const casual = ClockTemplateStyle(
+    id: 'casual_rounded',
+    name: 'Casual Doodle',
+    subtitle: 'ID: 11073 • Soft Rounded',
+    primaryColor: Color(0xFFEEFF41),
+    hardwareStyleIndex: 4,
+    fontFamily: ClockFontFamily.casual,
+    isStacked: true,
+  );
+
+  static const pixel = ClockTemplateStyle(
+    id: 'pixel_arcade',
+    name: '8-Bit Arcade',
+    subtitle: 'ID: 3872 • Pixel Matrix',
     primaryColor: Color(0xFF00E676),
     hardwareStyleIndex: 2,
+    fontFamily: ClockFontFamily.pixel,
+    isStacked: false,
   );
 
-  static const solar = ClockTemplateStyle(
-    id: 'solar',
+  static const techno = ClockTemplateStyle(
+    id: 'cyber_techno',
+    name: 'Cyber Techno',
+    subtitle: 'ID: 2917 • Dual Neon',
+    primaryColor: Colors.white,
+    secondaryColor: Color(0xFF7C4DFF),
+    hardwareStyleIndex: 2,
+    fontFamily: ClockFontFamily.techno,
+    isStacked: false,
+  );
+
+  static const minimal = ClockTemplateStyle(
+    id: 'minimal_slim',
+    name: 'Minimalist',
+    subtitle: 'ID: 3175 • Sleek Elegant',
+    primaryColor: Colors.white,
+    hardwareStyleIndex: 1,
+    fontFamily: ClockFontFamily.minimal,
+    isStacked: true,
+  );
+
+  static const popShadow = ClockTemplateStyle(
+    id: 'pop_shadow',
+    name: 'Pop Shadow',
+    subtitle: 'ID: 2810 • Purple Outline',
+    primaryColor: Color(0xFFFF9800),
+    secondaryColor: Color(0xFFE040FB),
+    hardwareStyleIndex: 4,
+    fontFamily: ClockFontFamily.block3d,
+    isStacked: true,
+    has3dShadow: true,
+  );
+
+  static const cyberMint = ClockTemplateStyle(
+    id: 'cyber_mint',
+    name: 'Emerald Mint',
+    subtitle: 'Glowing Neon',
+    primaryColor: Color(0xFF00E676),
+    hardwareStyleIndex: 2,
+    fontFamily: ClockFontFamily.neon,
+    isStacked: false,
+  );
+
+  static const solarGold = ClockTemplateStyle(
+    id: 'solar_gold',
     name: 'Solar Gold',
     subtitle: 'Vibrant Yellow',
     primaryColor: Color(0xFFFFEA00),
     hardwareStyleIndex: 4,
-  );
-
-  static const stealth = ClockTemplateStyle(
-    id: 'stealth',
-    name: 'Stealth Slate',
-    subtitle: 'Charcoal Grey',
-    primaryColor: Color(0xFFB0BEC5),
-    hardwareStyleIndex: 3,
-  );
-
-  static const cyan = ClockTemplateStyle(
-    id: 'cyan',
-    name: 'Electric Cyan',
-    subtitle: 'Cyber Blue',
-    primaryColor: Color(0xFF00E5FF),
-    hardwareStyleIndex: 2,
-  );
-
-  static const stacked = ClockTemplateStyle(
-    id: 'stacked',
-    name: 'Stacked Digital',
-    subtitle: 'Hour on Minute',
-    primaryColor: Colors.white,
-    hardwareStyleIndex: 1,
-    isStacked: true,
+    fontFamily: ClockFontFamily.modern,
+    isStacked: false,
   );
 
   static List<ClockTemplateStyle> get gallery => [
         modern,
-        cyber,
-        solar,
-        stealth,
-        cyan,
-        stacked,
+        athletic,
+        block3d,
+        casual,
+        pixel,
+        techno,
+        minimal,
+        popShadow,
+        cyberMint,
+        solarGold,
       ];
 }
 
@@ -95,25 +184,38 @@ class ClockPosition {
 
   const ClockPosition(this.label, this.x, this.y, {this.isCustom = false});
 
-  // DIZO Watch D Hardware presets (120x73 digital widget on 240x286 LCD):
-  // Center: x = (240 - 120) / 2 = 60, y = (286 - 73) / 2 = 106.5 -> 106
+  // Default Horizontal Presets (120x73 on 240x286 LCD):
   static const center = ClockPosition('Center', 60, 106);
-  // Top: hardware preset (x: 60, y: 8)
   static const top = ClockPosition('Top', 60, 8);
-  // Bottom: hardware preset (x: 60, y: 198)
   static const bottom = ClockPosition('Bottom', 60, 198);
-  // Left: hardware preset (x: 20, y: 106)
   static const left = ClockPosition('Left', 20, 106);
-  // Right: hardware preset (x: 102, y: 106)
   static const right = ClockPosition('Right', 102, 106);
 
-  static List<ClockPosition> get presets => [
-        center,
-        top,
-        bottom,
-        left,
-        right,
+  // Vertical Presets (78x126 on 240x286 LCD):
+  static const centerVertical = ClockPosition('Center', 81, 80);
+  static const topVertical = ClockPosition('Top', 81, 12);
+  static const bottomVertical = ClockPosition('Bottom', 81, 148);
+  static const leftVertical = ClockPosition('Left', 16, 80);
+  static const rightVertical = ClockPosition('Right', 146, 80);
+
+  static List<ClockPosition> getPresets({bool isVertical = false}) {
+    if (isVertical) {
+      return const [
+        centerVertical,
+        topVertical,
+        bottomVertical,
+        leftVertical,
+        rightVertical,
       ];
+    }
+    return const [
+      center,
+      top,
+      bottom,
+      left,
+      right,
+    ];
+  }
 
   int getXForSize(dynamic size) => x;
   int getYForSize(dynamic size) => y;
@@ -147,6 +249,7 @@ class ClockStyle {
   final ClockTemplateStyle templateStyle;
   final bool isVisible;
   final Color textColor;
+  final bool isStacked;
   final bool showDate;
   final bool showBattery;
   final bool showSteps;
@@ -158,11 +261,21 @@ class ClockStyle {
     this.templateStyle = ClockTemplateStyle.modern,
     this.isVisible = true,
     this.textColor = Colors.white,
+    this.isStacked = false,
     this.showDate = true,
     this.showBattery = false,
     this.showSteps = false,
     this.showHeartRate = false,
   });
+
+  bool get isVertical => isStacked;
+
+  // Horizontal is 120x73, Vertical is 78x126 (custom vertical block allowing big font sizes)
+  double get boxWidth => isVertical ? 78.0 : 120.0;
+  double get boxHeight => isVertical ? 126.0 : 73.0;
+
+  int get maxTargetX => (240.0 - boxWidth).round();
+  int get maxTargetY => (286.0 - boxHeight).round();
 
   ClockStyle copyWith({
     ClockPosition? position,
@@ -170,6 +283,7 @@ class ClockStyle {
     ClockTemplateStyle? templateStyle,
     bool? isVisible,
     Color? textColor,
+    bool? isStacked,
     bool? showDate,
     bool? showBattery,
     bool? showSteps,
@@ -181,6 +295,7 @@ class ClockStyle {
       templateStyle: templateStyle ?? this.templateStyle,
       isVisible: isVisible ?? this.isVisible,
       textColor: textColor ?? this.textColor,
+      isStacked: isStacked ?? this.isStacked,
       showDate: showDate ?? this.showDate,
       showBattery: showBattery ?? this.showBattery,
       showSteps: showSteps ?? this.showSteps,

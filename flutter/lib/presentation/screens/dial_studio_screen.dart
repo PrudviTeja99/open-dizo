@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/clock_style.dart';
@@ -252,6 +253,8 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
           isClockVisible: _clockStyle.isVisible,
           textColor: _clockStyle.textColor,
           hardwareStyleIndex: _clockStyle.templateStyle.hardwareStyleIndex,
+          clockWidth: _clockStyle.boxWidth.round(),
+          clockHeight: _clockStyle.boxHeight.round(),
         );
 
         final watchDevice = widget.bleService.device;
@@ -424,20 +427,28 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                   _buildSectionHeader('🎨  CLOCK STYLES'),
                   const SizedBox(height: 10),
                   SizedBox(
-                    height: 108,
+                    height: 114,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       children: ClockTemplateStyle.gallery.map((style) {
                         final isSelected = _clockStyle.templateStyle.id == style.id;
                         return GestureDetector(
                           onTap: () => setState(() {
+                            final bool wasVertical = _clockStyle.isVertical;
+                            final bool willBeVertical = style.isStacked;
                             _clockStyle = _clockStyle.copyWith(
                               templateStyle: style,
                               textColor: style.primaryColor,
+                              isStacked: willBeVertical,
                             );
+                            if (wasVertical != willBeVertical && !_clockStyle.position.isCustom) {
+                              _clockStyle = _clockStyle.copyWith(
+                                position: ClockPosition.getPresets(isVertical: willBeVertical).first,
+                              );
+                            }
                           }),
                           child: Container(
-                            width: 90,
+                            width: 96,
                             margin: const EdgeInsets.only(right: 12),
                             decoration: BoxDecoration(
                               color: const Color(0xFF161622),
@@ -464,8 +475,8 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                                     children: [
                                       // Miniature Preview Box
                                       Container(
-                                        height: 42,
-                                        width: 66,
+                                        height: 44,
+                                        width: style.isStacked ? 38 : 68,
                                         decoration: BoxDecoration(
                                           color: Colors.black.withValues(alpha: 0.6),
                                           borderRadius: BorderRadius.circular(8),
@@ -481,39 +492,29 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                                                   children: [
                                                     Text(
                                                       '10',
-                                                      style: TextStyle(
-                                                        color: style.primaryColor,
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.w900,
-                                                        height: 0.95,
-                                                      ),
+                                                      style: _getMiniatureStyle(style, isHour: true),
                                                     ),
                                                     Text(
                                                       '08',
-                                                      style: TextStyle(
-                                                        color: style.primaryColor,
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.w900,
-                                                        height: 0.95,
-                                                      ),
+                                                      style: _getMiniatureStyle(style, isHour: false),
                                                     ),
                                                   ],
                                                 )
-                                              : Text(
-                                                  '10:08',
-                                                  style: TextStyle(
-                                                    color: style.primaryColor,
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w900,
-                                                  ),
+                                              : Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text('10', style: _getMiniatureStyle(style, isHour: true)),
+                                                    Text(':', style: _getMiniatureStyle(style, isHour: true)),
+                                                    Text('08', style: _getMiniatureStyle(style, isHour: false)),
+                                                  ],
                                                 ),
                                         ),
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        style.name.split(' ').first,
+                                        style.name,
                                         style: TextStyle(
-                                          fontSize: 11,
+                                          fontSize: 10,
                                           fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                                           color: isSelected ? Colors.white : Colors.grey[400],
                                         ),
@@ -521,7 +522,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       Text(
-                                        style.subtitle,
+                                        style.subtitle.split(' • ').first,
                                         style: TextStyle(
                                           fontSize: 9,
                                           color: Colors.grey[500],
@@ -588,6 +589,59 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                   if (_clockStyle.isVisible) ...[
                     const SizedBox(height: 14),
 
+                    // Clock Layout Orientation Chips (Horizontal 120x73 vs Vertical 78x126)
+                    Row(
+                      children: [
+                        Text(
+                          'Layout: ',
+                          style: TextStyle(fontSize: 13, color: Colors.grey[400], fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('⬌ Horizontal (120×73)'),
+                          selected: !_clockStyle.isStacked,
+                          selectedColor: AppTheme.accent,
+                          labelStyle: TextStyle(
+                            color: !_clockStyle.isStacked ? Colors.white : Colors.grey[400],
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                          onSelected: (_) => setState(() {
+                            if (_clockStyle.isStacked) {
+                              _clockStyle = _clockStyle.copyWith(
+                                isStacked: false,
+                                position: _clockStyle.position.isCustom
+                                    ? _clockStyle.position
+                                    : ClockPosition.getPresets(isVertical: false).first,
+                              );
+                            }
+                          }),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('⬍ Vertical (78×126)'),
+                          selected: _clockStyle.isStacked,
+                          selectedColor: AppTheme.accent,
+                          labelStyle: TextStyle(
+                            color: _clockStyle.isStacked ? Colors.white : Colors.grey[400],
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                          onSelected: (_) => setState(() {
+                            if (!_clockStyle.isStacked) {
+                              _clockStyle = _clockStyle.copyWith(
+                                isStacked: true,
+                                position: _clockStyle.position.isCustom
+                                    ? _clockStyle.position
+                                    : ClockPosition.getPresets(isVertical: true).first,
+                              );
+                            }
+                          }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
                     // Clock Text Size Chips
                     Row(
                       children: [
@@ -619,7 +673,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Standard Watch Face Size Information
+                    // Active Display Box Information
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
@@ -629,15 +683,17 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.watch_outlined, size: 16, color: AppTheme.accent),
+                          const Icon(Icons.aspect_ratio_rounded, size: 16, color: AppTheme.accent),
                           const SizedBox(width: 8),
                           Text(
-                            'Display Box: ',
+                            'Active Outer Box: ',
                             style: TextStyle(fontSize: 12, color: Colors.grey[400], fontWeight: FontWeight.w600),
                           ),
-                          const Text(
-                            '120×73px LCD Bounds (1:1 Accurate)',
-                            style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
+                          Text(
+                            _clockStyle.isVertical
+                                ? '78×126px Vertical Box (Full-Height Digits)'
+                                : '120×73px Horizontal Box (1:1 Accurate)',
+                            style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -649,7 +705,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          ...ClockPosition.presets.map((pos) {
+                          ...ClockPosition.getPresets(isVertical: _clockStyle.isVertical).map((pos) {
                             final isSelected = !_clockStyle.position.isCustom &&
                                 _clockStyle.position.label == pos.label;
                             return Padding(
@@ -837,6 +893,50 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
         fontWeight: FontWeight.w600,
       ),
     );
+  }
+
+  TextStyle _getMiniatureStyle(ClockTemplateStyle style, {required bool isHour}) {
+    final color = isHour ? style.primaryColor : (style.secondaryColor ?? style.primaryColor);
+    final isOutline = !isHour && style.hasOutlineMinutes;
+
+    TextStyle base;
+    switch (style.fontFamily) {
+      case ClockFontFamily.athletic:
+        base = GoogleFonts.teko(fontSize: 14, fontWeight: FontWeight.w700, height: 0.88);
+        break;
+      case ClockFontFamily.block3d:
+        base = GoogleFonts.bungee(fontSize: 9.5, fontWeight: FontWeight.w900, height: 0.95);
+        break;
+      case ClockFontFamily.casual:
+        base = GoogleFonts.fredoka(fontSize: 11, fontWeight: FontWeight.w700, height: 0.95);
+        break;
+      case ClockFontFamily.pixel:
+        base = GoogleFonts.pressStart2p(fontSize: 6.5, fontWeight: FontWeight.w400, height: 1.0);
+        break;
+      case ClockFontFamily.techno:
+        base = GoogleFonts.orbitron(fontSize: 9.5, fontWeight: FontWeight.w900, height: 0.95);
+        break;
+      case ClockFontFamily.minimal:
+        base = GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w400, height: 0.95);
+        break;
+      case ClockFontFamily.neon:
+        base = GoogleFonts.shareTechMono(fontSize: 11, fontWeight: FontWeight.w700, height: 0.95);
+        break;
+      case ClockFontFamily.modern:
+      default:
+        base = GoogleFonts.montserrat(fontSize: 11, fontWeight: FontWeight.w900, height: 0.95);
+        break;
+    }
+
+    if (isOutline) {
+      return base.copyWith(
+        foreground: Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0
+          ..color = color,
+      );
+    }
+    return base.copyWith(color: color);
   }
 
   void _confirmDeleteWallpaper(WallpaperItem item) {

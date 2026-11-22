@@ -1,11 +1,13 @@
 import 'dart:io';
+import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/clock_style.dart';
 
 /// Renders a pixel-accurate DIZO Watch D frame (240x286 display with bezel)
-/// Displays the digital clock overlay with exact 120x73 hardware dimensions and positioning.
+/// Displays the digital clock overlay with exact 120x73 (horizontal) or 78x126 (vertical) dimensions.
 /// Supports long-press hold to select with vibration, followed by free dragging across the canvas.
 class WatchCanvasPreview extends StatefulWidget {
   final File? wallpaperFile;
@@ -43,9 +45,12 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
   @override
   void didUpdateWidget(WatchCanvasPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.clockStyle.position != widget.clockStyle.position) {
-      _currentX = widget.clockStyle.position.x.toDouble();
-      _currentY = widget.clockStyle.position.y.toDouble();
+    if (oldWidget.clockStyle.position != widget.clockStyle.position ||
+        oldWidget.clockStyle.isVertical != widget.clockStyle.isVertical) {
+      final maxDragX = (240.0 - widget.clockStyle.boxWidth);
+      final maxDragY = (286.0 - widget.clockStyle.boxHeight);
+      _currentX = widget.clockStyle.position.x.toDouble().clamp(0.0, maxDragX);
+      _currentY = widget.clockStyle.position.y.toDouble().clamp(0.0, maxDragY);
       if (!widget.clockStyle.position.isCustom) {
         _isSelected = false;
       }
@@ -62,9 +67,10 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
     _lastTouchPos = globalPos;
     final dx = delta.dx / widget.scale;
     final dy = delta.dy / widget.scale;
-    // Widget is 120x73 on 240x286 screen: clamp to [0, 120] and [0, 213]
-    _currentX = (_currentX + dx).clamp(0.0, 120.0);
-    _currentY = (_currentY + dy).clamp(0.0, 213.0);
+    final maxDragX = (240.0 - widget.clockStyle.boxWidth);
+    final maxDragY = (286.0 - widget.clockStyle.boxHeight);
+    _currentX = (_currentX + dx).clamp(0.0, maxDragX);
+    _currentY = (_currentY + dy).clamp(0.0, maxDragY);
     widget.onClockDragged!(_currentX.round(), _currentY.round());
   }
 
@@ -74,6 +80,107 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
       setState(() => _isSelected = false);
       widget.onDragStateChanged?.call(false);
     }
+  }
+
+  TextStyle _getClockTextStyle({
+    required double fontSize,
+    required Color color,
+    bool isOutline = false,
+    bool is3d = false,
+    Color? shadowColor,
+  }) {
+    final fontFamily = widget.clockStyle.templateStyle.fontFamily;
+    TextStyle base;
+
+    switch (fontFamily) {
+      case ClockFontFamily.athletic:
+        base = GoogleFonts.teko(
+          fontSize: fontSize * 1.15,
+          fontWeight: FontWeight.w700,
+          height: 0.88,
+        );
+        break;
+      case ClockFontFamily.block3d:
+        base = GoogleFonts.bungee(
+          fontSize: fontSize * 0.82,
+          fontWeight: FontWeight.w900,
+          height: 0.95,
+        );
+        break;
+      case ClockFontFamily.casual:
+        base = GoogleFonts.fredoka(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w700,
+          height: 0.95,
+        );
+        break;
+      case ClockFontFamily.pixel:
+        base = GoogleFonts.pressStart2p(
+          fontSize: fontSize * 0.52,
+          fontWeight: FontWeight.w400,
+          height: 1.0,
+        );
+        break;
+      case ClockFontFamily.techno:
+        base = GoogleFonts.orbitron(
+          fontSize: fontSize * 0.88,
+          fontWeight: FontWeight.w900,
+          height: 0.95,
+        );
+        break;
+      case ClockFontFamily.minimal:
+        base = GoogleFonts.outfit(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w400,
+          height: 0.95,
+          letterSpacing: 1.0,
+        );
+        break;
+      case ClockFontFamily.neon:
+        base = GoogleFonts.shareTechMono(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w700,
+          height: 0.95,
+        );
+        break;
+      case ClockFontFamily.modern:
+      default:
+        base = GoogleFonts.montserrat(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w900,
+          height: 0.95,
+        );
+        break;
+    }
+
+    List<Shadow> shadows = [];
+    if (is3d) {
+      final sc = shadowColor ?? const Color(0xFF311B92);
+      shadows = [
+        Shadow(offset: const Offset(2.0, 2.0), color: sc),
+        const Shadow(offset: Offset(3.5, 3.5), color: Colors.black),
+      ];
+    } else {
+      shadows = [
+        const Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(0, 1.5)),
+      ];
+    }
+
+    if (isOutline) {
+      return base.copyWith(
+        foreground: Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0
+          ..color = color,
+        shadows: shadows,
+      );
+    }
+
+    return base.copyWith(
+      color: color,
+      shadows: shadows,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
   }
 
   @override
@@ -146,7 +253,7 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
                         ),
                       ),
 
-                    // Clock & Complications Overlay (120x73 exact bounding box)
+                    // Clock & Complications Overlay
                     if (widget.clockStyle.isVisible)
                       _buildClockOverlay(displayW, displayH),
 
@@ -227,12 +334,26 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
   }
 
   Widget _buildClockOverlay(double width, double height) {
-    final textColor = widget.clockStyle.textColor;
+    final style = widget.clockStyle.templateStyle;
+    final primaryColor = widget.clockStyle.textColor;
+    final secondaryColor = style.secondaryColor ?? primaryColor;
+    final isVertical = widget.clockStyle.isVertical;
+    final fontSize = widget.clockStyle.size.fontSize(isVertical);
+
+    final bool minuteOutline = style.hasOutlineMinutes;
+    final bool use3d = style.has3dShadow;
+    final Color minuteColor = (minuteOutline || style.secondaryColor != null)
+        ? secondaryColor
+        : primaryColor;
+
     final now = DateTime.now();
     final hourStr = now.hour.toString().padLeft(2, '0');
     final minStr = now.minute.toString().padLeft(2, '0');
     final dayStr = _getDayName(now.weekday);
     final dateStr = '$dayStr ${now.day}';
+
+    final boxW = widget.clockStyle.boxWidth;
+    final boxH = widget.clockStyle.boxHeight;
 
     final clockContent = GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -272,8 +393,8 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
           : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        width: 120,
-        height: 73,
+        width: boxW,
+        height: boxH,
         decoration: BoxDecoration(
           color: _isSelected
               ? AppTheme.accent.withValues(alpha: 0.16)
@@ -281,7 +402,7 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
           border: Border.all(
             color: _isSelected
                 ? AppTheme.accent
-                : Colors.white.withValues(alpha: 0.18),
+                : Colors.white.withValues(alpha: 0.22),
             width: _isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(10),
@@ -300,44 +421,59 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Digital Time Display (bold condensed figures matching watch hardware)
-              if (widget.clockStyle.templateStyle.isStacked) ...[
+              if (isVertical) ...[
+                // Vertical Stacked Clock: Hours over Minutes in vertical box (78x126)
                 Text(
                   hourStr,
-                  style: TextStyle(
-                    fontSize: (26 * widget.clockStyle.size.scale).clamp(20.0, 32.0),
-                    fontWeight: FontWeight.w900,
-                    height: 0.95,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: textColor,
-                    shadows: const [
-                      Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1.5)),
-                    ],
+                  style: _getClockTextStyle(
+                    fontSize: fontSize,
+                    color: primaryColor,
+                    is3d: use3d,
+                    shadowColor: secondaryColor,
                   ),
                 ),
-                Text(
-                  minStr,
-                  style: TextStyle(
-                    fontSize: (26 * widget.clockStyle.size.scale).clamp(20.0, 32.0),
-                    fontWeight: FontWeight.w900,
-                    height: 0.95,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: textColor,
-                    shadows: const [
-                      Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1.5)),
+                const SizedBox(height: 2),
+                if (minuteOutline)
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Text(
+                        minStr,
+                        style: _getClockTextStyle(
+                          fontSize: fontSize,
+                          color: Colors.black.withValues(alpha: 0.55),
+                        ),
+                      ),
+                      Text(
+                        minStr,
+                        style: _getClockTextStyle(
+                          fontSize: fontSize,
+                          color: minuteColor,
+                          isOutline: true,
+                        ),
+                      ),
                     ],
+                  )
+                else
+                  Text(
+                    minStr,
+                    style: _getClockTextStyle(
+                      fontSize: fontSize,
+                      color: minuteColor,
+                      is3d: use3d,
+                      shadowColor: secondaryColor,
+                    ),
                   ),
-                ),
                 if (widget.clockStyle.showDate) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     dateStr.toUpperCase(),
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: (10.5 * widget.clockStyle.size.scale).clamp(9.0, 13.0),
                       fontWeight: FontWeight.w800,
                       height: 1.0,
-                      letterSpacing: 1.0,
-                      color: textColor.withValues(alpha: 0.95),
+                      letterSpacing: 0.8,
+                      color: primaryColor.withValues(alpha: 0.95),
                       shadows: const [
                         Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 1)),
                       ],
@@ -345,42 +481,78 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
                   ),
                 ],
               ] else ...[
-                Text(
-                  '$hourStr:$minStr',
-                  style: TextStyle(
-                    fontSize: widget.clockStyle.size.fontSize,
-                    fontWeight: FontWeight.w900,
-                    height: 1.0,
-                    letterSpacing: 0.5,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: textColor,
-                    shadows: const [
-                      Shadow(
-                        color: Colors.black,
-                        blurRadius: 4,
-                        offset: Offset(0, 1.5),
+                // Horizontal Clock in standard box (120x73)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      hourStr,
+                      style: _getClockTextStyle(
+                        fontSize: fontSize,
+                        color: primaryColor,
+                        is3d: use3d,
+                        shadowColor: secondaryColor,
                       ),
-                    ],
-                  ),
+                    ),
+                    Text(
+                      ':',
+                      style: _getClockTextStyle(
+                        fontSize: fontSize,
+                        color: primaryColor,
+                        is3d: use3d,
+                        shadowColor: secondaryColor,
+                      ),
+                    ),
+                    if (minuteOutline)
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Text(
+                            minStr,
+                            style: _getClockTextStyle(
+                              fontSize: fontSize,
+                              color: Colors.black.withValues(alpha: 0.55),
+                            ),
+                          ),
+                          Text(
+                            minStr,
+                            style: _getClockTextStyle(
+                              fontSize: fontSize,
+                              color: minuteColor,
+                              isOutline: true,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        minStr,
+                        style: _getClockTextStyle(
+                          fontSize: fontSize,
+                          color: minuteColor,
+                          is3d: use3d,
+                          shadowColor: secondaryColor,
+                        ),
+                      ),
+                  ],
                 ),
-
-                const SizedBox(height: 3),
-
-                // Date Display (Clean bold uppercase e.g. "FRI 22")
-                if (widget.clockStyle.showDate)
+                if (widget.clockStyle.showDate) ...[
+                  const SizedBox(height: 3),
                   Text(
                     dateStr.toUpperCase(),
                     style: TextStyle(
-                      fontSize: (13 * widget.clockStyle.size.scale).clamp(11.0, 15.0),
+                      fontSize: (12.5 * widget.clockStyle.size.scale).clamp(10.0, 15.0),
                       fontWeight: FontWeight.w800,
                       height: 1.0,
-                      letterSpacing: 1.2,
-                      color: textColor.withValues(alpha: 0.95),
+                      letterSpacing: 1.0,
+                      color: primaryColor.withValues(alpha: 0.95),
                       shadows: const [
                         Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 1)),
                       ],
                     ),
                   ),
+                ],
               ],
             ],
           ),
@@ -388,20 +560,23 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
       ),
     );
 
+    final double maxDragX = (240.0 - boxW);
+    final double maxDragY = (286.0 - boxH);
+
     // Exact 1:1 pixel coordinate placement matching watch LCD display
     final double leftPos = (_isSelected
         ? _currentX
-        : widget.clockStyle.position.x.toDouble()).clamp(0.0, 120.0);
+        : widget.clockStyle.position.x.toDouble()).clamp(0.0, maxDragX);
     final double topPos = (_isSelected
         ? _currentY
-        : widget.clockStyle.position.y.toDouble()).clamp(0.0, 213.0);
+        : widget.clockStyle.position.y.toDouble()).clamp(0.0, maxDragY);
 
     return Positioned(
       key: const ValueKey('watch_clock_widget'),
       left: leftPos,
       top: topPos,
-      width: 120.0,
-      height: 73.0,
+      width: boxW,
+      height: boxH,
       child: clockContent,
     );
   }
