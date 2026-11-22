@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// CRC16 calculation utility (HTSmart / Realtek table)
 class Crc16 {
   static const List<int> _table = [
@@ -19,11 +21,24 @@ class Crc16 {
     17408, 33985, 34177, 17728, 34561, 18368, 18048, 34369, 33281, 17088, 17280, 33601, 16640, 33217, 32897, 16448
   ];
 
+  /// Direct access to CRC16 table
+  static const List<int> table = _table;
+
   /// Computes CRC16 over arbitrary byte array
   static int compute(List<int> data) {
     int crc = 0;
     for (final b in data) {
       crc = ((crc >> 8) ^ _table[(b ^ crc) & 0xFF]) & 0xFFFF;
+    }
+    return crc;
+  }
+
+  /// Computes CRC16 over a specific slice of Uint8List with optional initial CRC
+  static int computeSlice(Uint8List data, int start, int len, [int initialCrc = 0]) {
+    int crc = initialCrc;
+    final int end = start + len;
+    for (int i = start; i < end; i++) {
+      crc = ((crc >> 8) ^ _table[(crc ^ data[i]) & 0xFF]) & 0xFFFF;
     }
     return crc;
   }

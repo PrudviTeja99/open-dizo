@@ -111,6 +111,16 @@ class HtsmartProtocol {
     );
   }
 
+  /// Builds a Switch Dial packet (Cmd 0x02, Key 0x70) to activate a dial slot (e.g. 4 for custom dial)
+  static List<int> buildSwitchDialPacket(int dialPosition, {int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x70,
+      payload: [dialPosition & 0xFF],
+      seq: seq,
+    );
+  }
+
   /// Calculates Linwear binding key from random challenge and MAC address
   static int calcBindingKey(int randomVal, String mac) {
     final cleanMac = mac.replaceAll(':', '').replaceAll('-', '').trim();

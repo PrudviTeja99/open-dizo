@@ -154,6 +154,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
     double speedValue = 0.0;
     bool isCompleted = false;
     String? errorMessage;
+    StateSetter? updateDialog;
 
     showDialog(
       context: context,
@@ -161,6 +162,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
+            updateDialog = setDialogState;
             return AlertDialog(
               backgroundColor: AppTheme.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -246,28 +248,48 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
           clockPosition: _clockStyle.position,
         );
 
+        final watchDevice = widget.bleService.device;
+        final watchMac = watchDevice?.remoteId.str;
+
         // 2. Stream and flash via Realtek DFU over BLE
         await DfuFlasherService.flashDialBinary(
           device: widget.bleService.device!,
           dialBinary: dialBinary,
           onProgress: (prog, sent, total, speed, msg) {
-            // Update dialog state
-            (context as Element).visitChildren((element) {
-              element.markNeedsBuild();
-            });
+            progressValue = prog;
+            speedValue = speed;
+            statusText = msg;
+            updateDialog?.call(() {});
           },
         );
 
+        // 3. Post-DFU Watch Reconnection & Switch Dial (#4)
+        if (watchMac != null) {
+          statusText = 'Watch rebooting... Reconnecting in 4s...';
+          updateDialog?.call(() {});
+          await Future.delayed(const Duration(seconds: 4));
+          statusText = 'Reconnecting to DIZO Watch D...';
+          updateDialog?.call(() {});
+          await widget.bleService.connectByMacAddress(watchMac);
+          if (widget.bleService.isConnected) {
+            statusText = 'Activating new custom watch face...';
+            updateDialog?.call(() {});
+            await Future.delayed(const Duration(milliseconds: 600));
+            await widget.bleService.switchDial(4);
+          }
+        }
+
         // Success
         isCompleted = true;
+        progressValue = 1.0;
         statusText = 'Watch face flashed and activated successfully!';
         widget.bleService.log('Watch face flashed & activated ✓', type: LogType.success);
-        if (mounted) setState(() {});
+        updateDialog?.call(() {});
       } catch (e, stack) {
         debugPrint('[DialStudio] Flashing error: $e\n$stack');
         widget.bleService.log('Flashing error: $e', type: LogType.error);
         errorMessage = 'Flashing error: $e';
-        if (mounted) setState(() {});
+        updateDialog?.call(() {});
       }
     });
   }

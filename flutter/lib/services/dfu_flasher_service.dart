@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:pointycastle/export.dart';
@@ -169,12 +168,16 @@ class DfuFlasherService {
       final totalBytes = streamData.length;
       const int packetSize = 240;
 
-      // Define 130 sector chunks (Chunk 0 = 4,084B, Chunks 1..128 = 4,096B, Chunk 129 = 952B)
+      // Partition into 4KB sector-aligned chunks:
+      // Chunk 0 is 4,084 bytes (brings 12-byte header to 4,096 sector boundary)
+      // All intermediate chunks are 4,096 bytes, and final chunk carries remaining bytes (964 bytes)
       final List<int> chunkSizes = [4084];
-      for (int i = 0; i < 128; i++) {
-        chunkSizes.add(4096);
+      int pos = 4084;
+      while (pos < totalBytes) {
+        final end = (pos + 4096 < totalBytes) ? pos + 4096 : totalBytes;
+        chunkSizes.add(end - pos);
+        pos = end;
       }
-      chunkSizes.add(952);
 
       int streamOffset = 0;
       final stopwatch = Stopwatch()..start();

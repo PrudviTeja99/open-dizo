@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:image/image.dart' as img;
@@ -23,7 +24,7 @@ class DialBuilderService {
 
     final ByteData bd = ByteData.sublistView(binData);
 
-    // 2. Decode user's 240x286 image using pure Dart 'image' package
+    // 2. Decode user's image using pure Dart 'image' package
     final img.Image? decoded = img.decodeImage(wallpaperPngBytes);
     if (decoded == null) {
       throw Exception('Failed to decode wallpaper image bytes');
@@ -51,10 +52,16 @@ class DialBuilderService {
     final int addrOffset = bd.getUint32(1552, Endian.little);
     final int offsetC = addrOffset + 1536;
     final int controlOffset = bd.getUint32(offsetC, Endian.little);
-    final int ctrl0Addr = controlOffset + 1536;
+    final int controlSize = bd.getUint16(offsetC + 6, Endian.little);
 
-    bd.setUint16(ctrl0Addr + 8, clockPosition.x, Endian.little);
-    bd.setUint16(ctrl0Addr + 10, clockPosition.y, Endian.little);
+    // Update cVar.q[0] clock coordinates
+    bd.setInt16(addrOffset + 1536 + 38, clockPosition.x, Endian.little);
+    bd.setInt16(addrOffset + 1536 + 40, clockPosition.y, Endian.little);
+
+    // Update Control #4 (TIME_STYLE) clock coordinates
+    final int ctrl4Addr = controlOffset + 4 * controlSize + 1536 + 4;
+    bd.setInt16(ctrl4Addr, clockPosition.x, Endian.little);
+    bd.setInt16(ctrl4Addr + 2, clockPosition.y, Endian.little);
 
     // 6. Recalculate CRC16 and update offset 518..519
     _updateDialCrc16(binData);
@@ -62,17 +69,21 @@ class DialBuilderService {
     return binData;
   }
 
-  /// Converts an image to RGB565 big-endian rows
+  /// Converts an image to RGB565 big-endian rows with aspect-ratio preserving center crop
   static List<Uint8List> _imageToRgb565Rows(img.Image src, int targetW, int targetH) {
-    // Resize with aspect ratio preserved (center crop)
-    final img.Image resized = img.copyResizeCropSquare(src, size: targetW < targetH ? targetW : targetH);
-    final img.Image scaled = img.copyResize(resized, width: targetW, height: targetH, interpolation: img.Interpolation.cubic);
+    final double scale = math.max(targetW / src.width, targetH / src.height);
+    final int newW = (src.width * scale).round();
+    final int newH = (src.height * scale).round();
+    final img.Image resized = img.copyResize(src, width: newW, height: newH, interpolation: img.Interpolation.linear);
+    final int left = ((newW - targetW) / 2).floor();
+    final int top = ((newH - targetH) / 2).floor();
+    final img.Image cropped = img.copyCrop(resized, x: left, y: top, width: targetW, height: targetH);
 
     final List<Uint8List> rows = [];
     for (int y = 0; y < targetH; y++) {
       final Uint8List row = Uint8List(targetW * 2);
       for (int x = 0; x < targetW; x++) {
-        final pixel = scaled.getPixel(x, y);
+        final pixel = cropped.getPixel(x, y);
         int r = pixel.r.toInt();
         int g = pixel.g.toInt();
         int b = pixel.b.toInt();
@@ -84,7 +95,7 @@ class DialBuilderService {
           b = 0;
         }
 
-        // RGB565 big-endian:
+        // RGB565 big-endian format:
         // Byte 0: (g >> 5) | (r & 0xF8)
         // Byte 1: ((g << 3) & 0xE0) | (b >> 3)
         row[x * 2] = ((g >> 5) | (r & 0xF8)) & 0xFF;
@@ -105,30 +116,17 @@ class DialBuilderService {
     }
 
     final int i4 = length - 1520;
-    int crc1 = _calcPartialCrc(bArr, 12, 740, 0);
-    int crc2 = _calcPartialCrc(bArr, 1008, i4, crc1);
+    int crc1 = Crc16.computeSlice(bArr, 12, 740, 0);
+    int crc2 = Crc16.computeSlice(bArr, 1008, i4, crc1);
 
     if (crc2 == 0) {
       bArr[372] = 0;
-      crc1 = _calcPartialCrc(bArr, 12, 740, 0);
-      crc2 = _calcPartialCrc(bArr, 1008, i4, crc1);
+      crc1 = Crc16.computeSlice(bArr, 12, 740, 0);
+      crc2 = Crc16.computeSlice(bArr, 1008, i4, crc1);
     }
 
     binBytes[518] = crc2 & 0xFF;
     binBytes[519] = (crc2 >> 8) & 0xFF;
     return crc2;
-  }
-
-  static int _calcPartialCrc(Uint8List data, int start, int len, int initialCrc) {
-    int crc = initialCrc;
-    final end = start + len;
-    for (int i = start; i < end; i++) {
-      crc = ((crc >> 8) ^ Crc16computeByte((crc ^ data[i]) & 0xFF)) & 0xFFFF;
-    }
-    return crc;
-  }
-
-  static int Crc16computeByte(int index) {
-    return Crc16.compute([index]);
   }
 }

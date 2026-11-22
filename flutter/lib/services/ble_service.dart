@@ -486,6 +486,13 @@ class BleService extends ChangeNotifier {
     }
   }
 
+  /// Switches active dial slot on watch (e.g. 4 for custom dial)
+  Future<void> switchDial(int dialPosition) async {
+    log('Switching active dial to slot #$dialPosition...');
+    final packet = HtsmartProtocol.buildSwitchDialPacket(dialPosition);
+    await writeFF02(packet, 'Switch Dial (#$dialPosition)');
+  }
+
   @override
   void dispose() {
     for (final sub in _subscriptions) {
