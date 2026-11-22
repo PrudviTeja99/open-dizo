@@ -51,6 +51,66 @@ class HtsmartProtocol {
     );
   }
 
+  /// Builds a Login authentication packet (Cmd 0x03, Key 0x13) with 32-byte userId
+  static List<int> buildLoginPacket({String userId = 'DizoUser', int seq = 1}) {
+    final payload = List<int>.filled(32, 0);
+    final userBytes = userId.codeUnits;
+    for (int i = 0; i < userBytes.length && i < 28; i++) {
+      payload[i] = userBytes[i];
+    }
+    return buildPacket(
+      cmdId: 0x03, // CMD_BOND_REG
+      keyId: 0x13, // Login key (19)
+      payload: payload,
+      seq: seq,
+    );
+  }
+
+  /// Builds a Bind registration packet (Cmd 0x03, Key 0x11) with 32-byte userId
+  static List<int> buildBindPacket({String userId = 'DizoUser', int seq = 1}) {
+    final payload = List<int>.filled(32, 0);
+    final userBytes = userId.codeUnits;
+    for (int i = 0; i < userBytes.length && i < 28; i++) {
+      payload[i] = userBytes[i];
+    }
+    return buildPacket(
+      cmdId: 0x03, // CMD_BOND_REG
+      keyId: 0x11, // Bind key (17)
+      payload: payload,
+      seq: seq,
+    );
+  }
+
+  /// Builds a Battery / Status query packet (Cmd 0x02, Key 0x52)
+  static List<int> buildBatteryQueryPacket({int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x52,
+      payload: const [],
+      seq: seq,
+    );
+  }
+
+  /// Builds a Find Watch vibration trigger packet (Cmd 0x02, Key 0x1B)
+  static List<int> buildFindWatchPacket({int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x1B,
+      payload: const [],
+      seq: seq,
+    );
+  }
+
+  /// Builds a Dial / Watchface info query packet (Cmd 0x02, Key 0x43)
+  static List<int> buildDialInfoQueryPacket({int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x43,
+      payload: const [],
+      seq: seq,
+    );
+  }
+
   /// Calculates Linwear binding key from random challenge and MAC address
   static int calcBindingKey(int randomVal, String mac) {
     final cleanMac = mac.replaceAll(':', '').replaceAll('-', '').trim();

@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/clock_style.dart';
+import '../../models/log_entry.dart';
 import '../../models/wallpaper_item.dart';
 import '../../services/ble_service.dart';
 import '../../services/wallpaper_storage_service.dart';
@@ -260,8 +261,11 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
         // Success
         isCompleted = true;
         statusText = 'Watch face flashed and activated successfully!';
+        widget.bleService.log('Watch face flashed & activated ✓', type: LogType.success);
         if (mounted) setState(() {});
-      } catch (e) {
+      } catch (e, stack) {
+        debugPrint('[DialStudio] Flashing error: $e\n$stack');
+        widget.bleService.log('Flashing error: $e', type: LogType.error);
         errorMessage = 'Flashing error: $e';
         if (mounted) setState(() {});
       }

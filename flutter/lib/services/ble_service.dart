@@ -339,6 +339,10 @@ class BleService extends ChangeNotifier {
       _isConnecting = false;
       notifyListeners();
 
+      // Maintain active session with the watch firmware
+      log('Authenticating session with watch...');
+      await writeFF02(HtsmartProtocol.buildLoginPacket(), 'Session Auth');
+
       // Auto time sync on connection
       log('Auto-synchronizing watch time...');
       await syncTime();
