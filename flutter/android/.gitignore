@@ -12,3 +12,4 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+!open_dizo_release.jks
