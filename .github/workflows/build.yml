@@ -52,27 +52,8 @@ jobs:
           # Restore custom AndroidManifest.xml
           cp /tmp/AndroidManifest.xml.bak android/app/src/main/AndroidManifest.xml
           
-          # Set compileSdk = 36 and minSdk = 21 in android/app/build.gradle
-          if [ -f "android/app/build.gradle" ]; then
-            sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' android/app/build.gradle || true
-            sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle || true
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle || true
-            sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
-            sed -i 's/minSdkVersion [0-9]\+/minSdkVersion 21/g' android/app/build.gradle || true
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
-            sed -i 's/minSdk = [0-9]\+/minSdk = 21/g' android/app/build.gradle || true
-          fi
-          if [ -f "android/app/build.gradle.kts" ]; then
-            sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle.kts || true
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle.kts || true
-            sed -i 's/minSdk = [0-9]\+/minSdk = 21/g' android/app/build.gradle.kts || true
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle.kts || true
-          fi
-
-          # Force all plugin subprojects to compile with SDK 36 in android/build.gradle
-          if [ -f "android/build.gradle" ]; then
-            printf '\nsubprojects {\n    afterEvaluate { project ->\n        if (project.hasProperty("android")) {\n            project.android {\n                compileSdkVersion 36\n            }\n        }\n    }\n}\n' >> android/build.gradle
-          fi
+          cd ..
+          python3 .github/scripts/configure_android.py
 
       - name: Build Android Release APK
         run: |
