@@ -7,7 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/wallpaper_item.dart';
 import '../../services/wallpaper_storage_service.dart';
 
-/// Screen allowing the user to zoom in/out, pan, and crop an image to 240x286
+/// Screen allowing the user to zoom in/out, pan, and crop an image to 240x286 without revealing black space
 class ImageAdjustScreen extends StatefulWidget {
   final File rawImageFile;
   final WallpaperStorageService storageService;
@@ -35,7 +35,10 @@ class _ImageAdjustScreenState extends State<ImageAdjustScreen> {
 
   void _zoom(double factor) {
     final matrix = _transformController.value.clone();
-    matrix.scale(factor, factor);
+    final currentScale = matrix.getMaxScaleOnAxis();
+    final newScale = (currentScale * factor).clamp(1.0, 4.0);
+    final scaleChange = newScale / currentScale;
+    matrix.scaleByDouble(scaleChange, scaleChange, 1.0, 1.0);
     _transformController.value = matrix;
   }
 
@@ -53,7 +56,7 @@ class _ImageAdjustScreenState extends State<ImageAdjustScreen> {
         throw Exception('Render boundary not found');
       }
 
-      // 240 display width * pixelRatio = exact 240 pixels width
+      // Exact 240x286 pixels capture
       const double targetWidth = 240.0;
       final double logicalWidth = boundary.size.width;
       final double pixelRatio = targetWidth / logicalWidth;
@@ -115,14 +118,14 @@ class _ImageAdjustScreenState extends State<ImageAdjustScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
-                'Pinch to zoom in/out or drag to fit your wallpaper to the watch display.',
+                'Pinch to zoom in or drag to position. The image is clamped so no black background appears.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey[400], fontSize: 13),
               ),
             ),
             const SizedBox(height: 12),
 
-            // Viewport & Cropping Window
+            // Viewport & Cropping Window (Zero boundary margin and clamped scale)
             Expanded(
               child: Center(
                 child: Container(
@@ -133,7 +136,7 @@ class _ImageAdjustScreenState extends State<ImageAdjustScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.accent.withOpacity(0.3),
+                        color: AppTheme.accent.withValues(alpha: 0.3),
                         blurRadius: 16,
                       ),
                     ],
@@ -148,12 +151,19 @@ class _ImageAdjustScreenState extends State<ImageAdjustScreen> {
                         color: Colors.black,
                         child: InteractiveViewer(
                           transformationController: _transformController,
-                          minScale: 0.5,
-                          maxScale: 5.0,
-                          boundaryMargin: const EdgeInsets.all(double.infinity),
-                          child: Image.file(
-                            widget.rawImageFile,
-                            fit: BoxFit.cover,
+                          minScale: 1.0,
+                          maxScale: 4.0,
+                          boundaryMargin: EdgeInsets.zero,
+                          clipBehavior: Clip.hardEdge,
+                          child: SizedBox(
+                            width: dialW,
+                            height: dialH,
+                            child: Image.file(
+                              widget.rawImageFile,
+                              fit: BoxFit.cover,
+                              width: dialW,
+                              height: dialH,
+                            ),
                           ),
                         ),
                       ),
@@ -172,7 +182,7 @@ class _ImageAdjustScreenState extends State<ImageAdjustScreen> {
                   IconButton.filledTonal(
                     onPressed: () => _zoom(0.85),
                     icon: const Icon(Icons.zoom_out),
-                    tooltip: 'Zoom Out',
+                    tooltip: 'Zoom Out (Clamped)',
                   ),
                   const SizedBox(width: 20),
                   IconButton.filledTonal(

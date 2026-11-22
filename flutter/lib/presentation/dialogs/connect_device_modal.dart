@@ -49,7 +49,7 @@ class ConnectDeviceModal extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.cyan.withOpacity(0.15),
+                    color: Colors.cyan.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.watch, color: Colors.cyanAccent, size: 24),
@@ -150,7 +150,7 @@ class ConnectDeviceModal extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white12),
         ),
@@ -160,7 +160,7 @@ class ConnectDeviceModal extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.15),
+                color: iconColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(icon, color: iconColor, size: 26),
@@ -189,11 +189,11 @@ class ConnectDeviceModal extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: (badgeColor ?? Colors.cyanAccent)
-                                .withOpacity(0.2),
+                                .withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
                               color: (badgeColor ?? Colors.cyanAccent)
-                                  .withOpacity(0.4),
+                                  .withValues(alpha: 0.4),
                             ),
                           ),
                           child: Text(

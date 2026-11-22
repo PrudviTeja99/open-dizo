@@ -12,7 +12,8 @@ class DialBuilderService {
   /// Generates a complete 529,860-byte dial binary ready for flashing
   static Future<Uint8List> buildDialBinary({
     required Uint8List wallpaperPngBytes,
-    ClockPosition clockPosition = ClockPosition.bottom,
+    ClockPosition clockPosition = ClockPosition.center,
+    bool isClockVisible = true,
   }) async {
     // 1. Load base template from Flutter assets
     final ByteData assetData = await rootBundle.load(_templateAsset);
@@ -48,20 +49,23 @@ class DialBuilderService {
       binData.setRange(rowAddr, rowAddr + 320, thumbRows[y]);
     }
 
-    // 5. Position Digital Clock (Bottom, Top, Left, Right)
+    // 5. Position Digital Clock (Support free coordinates or hide off-screen if removed)
     final int addrOffset = bd.getUint32(1552, Endian.little);
     final int offsetC = addrOffset + 1536;
     final int controlOffset = bd.getUint32(offsetC, Endian.little);
     final int controlSize = bd.getUint16(offsetC + 6, Endian.little);
 
+    final int targetX = isClockVisible ? clockPosition.x : -400;
+    final int targetY = isClockVisible ? clockPosition.y : -400;
+
     // Update cVar.q[0] clock coordinates
-    bd.setInt16(addrOffset + 1536 + 38, clockPosition.x, Endian.little);
-    bd.setInt16(addrOffset + 1536 + 40, clockPosition.y, Endian.little);
+    bd.setInt16(addrOffset + 1536 + 38, targetX, Endian.little);
+    bd.setInt16(addrOffset + 1536 + 40, targetY, Endian.little);
 
     // Update Control #4 (TIME_STYLE) clock coordinates
     final int ctrl4Addr = controlOffset + 4 * controlSize + 1536 + 4;
-    bd.setInt16(ctrl4Addr, clockPosition.x, Endian.little);
-    bd.setInt16(ctrl4Addr + 2, clockPosition.y, Endian.little);
+    bd.setInt16(ctrl4Addr, targetX, Endian.little);
+    bd.setInt16(ctrl4Addr + 2, targetY, Endian.little);
 
     // 6. Recalculate CRC16 and update offset 518..519
     _updateDialCrc16(binData);

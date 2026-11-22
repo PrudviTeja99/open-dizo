@@ -7,12 +7,14 @@ class WatchCanvasPreview extends StatelessWidget {
   final File? wallpaperFile;
   final ClockStyle clockStyle;
   final double scale;
+  final void Function(int newX, int newY)? onClockDragged;
 
   const WatchCanvasPreview({
     super.key,
     this.wallpaperFile,
     required this.clockStyle,
     this.scale = 1.0,
+    this.onClockDragged,
   });
 
   @override
@@ -33,7 +35,7 @@ class WatchCanvasPreview extends StatelessWidget {
             border: Border.all(color: const Color(0xFF323246), width: 3),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.6),
                 blurRadius: 24,
                 offset: const Offset(0, 10),
               ),
@@ -69,13 +71,14 @@ class WatchCanvasPreview extends StatelessWidget {
                         child: Icon(
                           Icons.image_outlined,
                           size: 48,
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                         ),
                       ),
                     ),
 
-                  // Clock & Widget Complications Overlay
-                  _buildClockOverlay(displayW, displayH),
+                  // Clock & Complications Overlay
+                  if (clockStyle.isVisible)
+                    _buildClockOverlay(displayW, displayH),
                 ],
               ),
             ),
@@ -86,28 +89,6 @@ class WatchCanvasPreview extends StatelessWidget {
   }
 
   Widget _buildClockOverlay(double width, double height) {
-    Alignment alignment;
-    CrossAxisAlignment crossAlign;
-
-    switch (clockStyle.position) {
-      case ClockPosition.top:
-        alignment = Alignment.topCenter;
-        crossAlign = CrossAxisAlignment.center;
-        break;
-      case ClockPosition.bottom:
-        alignment = Alignment.bottomCenter;
-        crossAlign = CrossAxisAlignment.center;
-        break;
-      case ClockPosition.left:
-        alignment = Alignment.centerLeft;
-        crossAlign = CrossAxisAlignment.start;
-        break;
-      case ClockPosition.right:
-        alignment = Alignment.centerRight;
-        crossAlign = CrossAxisAlignment.end;
-        break;
-    }
-
     final textColor = clockStyle.textColor;
     final now = DateTime.now();
     final hourStr = now.hour.toString().padLeft(2, '0');
@@ -115,25 +96,41 @@ class WatchCanvasPreview extends StatelessWidget {
     final dayStr = _getDayName(now.weekday);
     final dateStr = '$dayStr ${now.day}';
 
-    return Align(
-      alignment: alignment,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    final clockContent = GestureDetector(
+      onPanUpdate: onClockDragged != null
+          ? (details) {
+              final newX = (clockStyle.position.x + details.delta.dx.round()).clamp(10, 150);
+              final newY = (clockStyle.position.y + details.delta.dy.round()).clamp(8, 210);
+              onClockDragged!(newX, newY);
+            }
+          : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: onClockDragged != null
+            ? BoxDecoration(
+                border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+                borderRadius: BorderRadius.circular(10),
+              )
+            : null,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: crossAlign,
+          crossAxisAlignment: clockStyle.position.label == 'Left'
+              ? CrossAxisAlignment.start
+              : (clockStyle.position.label == 'Right'
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.center),
           children: [
-            // Time Display
+            // Time Display with custom size
             Text(
               '$hourStr:$minStr',
               style: TextStyle(
                 fontFamily: 'monospace',
-                fontSize: 34,
+                fontSize: clockStyle.size.fontSize,
                 fontWeight: FontWeight.w900,
                 color: textColor,
                 shadows: [
                   Shadow(
-                    color: Colors.black.withOpacity(0.8),
+                    color: Colors.black.withValues(alpha: 0.8),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
@@ -146,32 +143,32 @@ class WatchCanvasPreview extends StatelessWidget {
               Text(
                 dateStr,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: (clockStyle.size.fontSize * 0.35).clamp(10.0, 16.0),
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.1,
-                  color: textColor.withOpacity(0.9),
+                  color: textColor.withValues(alpha: 0.9),
                   shadows: [
-                    Shadow(color: Colors.black.withOpacity(0.8), blurRadius: 4),
+                    Shadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: 4),
                   ],
                 ),
               ),
 
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
 
-            // Metrics Complications Row (Steps, Battery, HR)
+            // Health Icons Row
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (clockStyle.showSteps) ...[
-                  _badge('🚶 7.2k', textColor),
-                  const SizedBox(width: 6),
-                ],
                 if (clockStyle.showBattery) ...[
-                  _badge('🔋 85%', textColor),
-                  const SizedBox(width: 6),
+                  Icon(Icons.battery_std, size: 12, color: textColor.withValues(alpha: 0.8)),
+                  const SizedBox(width: 4),
+                ],
+                if (clockStyle.showSteps) ...[
+                  Icon(Icons.directions_walk, size: 12, color: textColor.withValues(alpha: 0.8)),
+                  const SizedBox(width: 4),
                 ],
                 if (clockStyle.showHeartRate) ...[
-                  _badge('❤️ 74', textColor),
+                  Icon(Icons.favorite, size: 12, color: Colors.redAccent.withValues(alpha: 0.8)),
                 ],
               ],
             ),
@@ -179,28 +176,49 @@ class WatchCanvasPreview extends StatelessWidget {
         ),
       ),
     );
-  }
 
-  Widget _badge(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
+    // If Custom Position, use Positioned coordinates
+    if (clockStyle.position.isCustom) {
+      return Positioned(
+        left: clockStyle.position.x.toDouble().clamp(0.0, 160.0),
+        top: clockStyle.position.y.toDouble().clamp(0.0, 220.0),
+        child: clockContent,
+      );
+    }
+
+    // Otherwise align by Preset
+    Alignment alignment;
+    switch (clockStyle.position.label) {
+      case 'Center':
+        alignment = Alignment.center;
+        break;
+      case 'Top':
+        alignment = Alignment.topCenter;
+        break;
+      case 'Bottom':
+        alignment = Alignment.bottomCenter;
+        break;
+      case 'Left':
+        alignment = Alignment.centerLeft;
+        break;
+      case 'Right':
+        alignment = Alignment.centerRight;
+        break;
+      default:
+        alignment = Alignment.center;
+    }
+
+    return Align(
+      alignment: alignment,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: clockContent,
       ),
     );
   }
 
   String _getDayName(int weekday) {
-    const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return days[(weekday - 1) % 7];
   }
 }

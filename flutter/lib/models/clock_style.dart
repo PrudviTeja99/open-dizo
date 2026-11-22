@@ -1,19 +1,64 @@
 import 'package:flutter/material.dart';
 
-enum ClockPosition {
-  top('Top', 60, 8),
-  bottom('Bottom', 60, 198),
-  left('Left', 20, 103),
-  right('Right', 102, 103);
+enum ClockSize {
+  small('Small', 26, 0.8),
+  medium('Medium', 34, 1.0),
+  large('Large', 44, 1.25);
 
+  final String label;
+  final double fontSize;
+  final double scale;
+  const ClockSize(this.label, this.fontSize, this.scale);
+}
+
+class ClockPosition {
   final String label;
   final int x;
   final int y;
-  const ClockPosition(this.label, this.x, this.y);
+  final bool isCustom;
+
+  const ClockPosition(this.label, this.x, this.y, {this.isCustom = false});
+
+  static const center = ClockPosition('Center', 60, 103);
+  static const top = ClockPosition('Top', 60, 8);
+  static const bottom = ClockPosition('Bottom', 60, 198);
+  static const left = ClockPosition('Left', 20, 103);
+  static const right = ClockPosition('Right', 102, 103);
+
+  static List<ClockPosition> get presets => [
+        center,
+        top,
+        bottom,
+        left,
+        right,
+      ];
+
+  ClockPosition copyWith({int? x, int? y, String? label, bool? isCustom}) {
+    return ClockPosition(
+      label ?? this.label,
+      x ?? this.x,
+      y ?? this.y,
+      isCustom: isCustom ?? this.isCustom,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ClockPosition &&
+          runtimeType == other.runtimeType &&
+          label == other.label &&
+          x == other.x &&
+          y == other.y;
+
+  @override
+  int get hashCode => label.hashCode ^ x.hashCode ^ y.hashCode;
 }
 
 class ClockStyle {
   final ClockPosition position;
+  final ClockSize size;
+  final bool isVisible;
   final Color textColor;
   final bool showDate;
   final bool showBattery;
@@ -21,7 +66,9 @@ class ClockStyle {
   final bool showHeartRate;
 
   const ClockStyle({
-    this.position = ClockPosition.bottom,
+    this.position = ClockPosition.center,
+    this.size = ClockSize.medium,
+    this.isVisible = true,
     this.textColor = Colors.white,
     this.showDate = true,
     this.showBattery = true,
@@ -31,6 +78,8 @@ class ClockStyle {
 
   ClockStyle copyWith({
     ClockPosition? position,
+    ClockSize? size,
+    bool? isVisible,
     Color? textColor,
     bool? showDate,
     bool? showBattery,
@@ -39,6 +88,8 @@ class ClockStyle {
   }) {
     return ClockStyle(
       position: position ?? this.position,
+      size: size ?? this.size,
+      isVisible: isVisible ?? this.isVisible,
       textColor: textColor ?? this.textColor,
       showDate: showDate ?? this.showDate,
       showBattery: showBattery ?? this.showBattery,

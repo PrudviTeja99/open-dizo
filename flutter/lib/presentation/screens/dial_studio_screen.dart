@@ -27,7 +27,9 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
   final WallpaperStorageService _storageService = WallpaperStorageService();
   WallpaperItem? _selectedWallpaper;
   ClockStyle _clockStyle = const ClockStyle(
-    position: ClockPosition.bottom,
+    position: ClockPosition.center,
+    size: ClockSize.medium,
+    isVisible: true,
     textColor: Colors.white,
     showDate: true,
     showBattery: true,
@@ -246,6 +248,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
         final Uint8List dialBinary = await DialBuilderService.buildDialBinary(
           wallpaperPngBytes: wallpaperBytes,
           clockPosition: _clockStyle.position,
+          isClockVisible: _clockStyle.isVisible,
         );
 
         final watchDevice = widget.bleService.device;
@@ -323,6 +326,11 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                     wallpaperFile: currentWallpaperFile,
                     clockStyle: _clockStyle,
                     scale: 0.95,
+                    onClockDragged: (newX, newY) => setState(() {
+                      _clockStyle = _clockStyle.copyWith(
+                        position: ClockPosition('Custom', newX, newY, isCustom: true),
+                      );
+                    }),
                   ),
                   const SizedBox(height: 20),
 
@@ -343,7 +351,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                             decoration: BoxDecoration(
                               color: AppTheme.surfaceLight,
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppTheme.accent.withOpacity(0.5), width: 1.5),
+                              border: Border.all(color: AppTheme.accent.withValues(alpha: 0.5), width: 1.5),
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -405,103 +413,197 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Section 2: Clock Position
-                  _buildSectionHeader('📍  CLOCK POSITION'),
+                  // Section 2: Clock Display & Customization
+                  _buildSectionHeader('⏰  CLOCK & COMPLICATIONS'),
                   const SizedBox(height: 10),
-                  Row(
-                    children: ClockPosition.values.map((pos) {
-                      final isSelected = _clockStyle.position == pos;
-                      return Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: ChoiceChip(
-                            label: Text(pos.label),
-                            selected: isSelected,
-                            selectedColor: AppTheme.accent,
-                            labelStyle: TextStyle(
-                              color: isSelected ? Colors.white : Colors.grey[400],
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                            onSelected: (_) => setState(() {
-                              _clockStyle = _clockStyle.copyWith(position: pos);
-                            }),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
 
-                  // Section 3: Text & Accent Color
-                  _buildSectionHeader('🎨  TEXT COLOR'),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: _availableColors.map((color) {
-                      final isSelected = _clockStyle.textColor.value == color.value;
-                      return GestureDetector(
-                        onTap: () => setState(() {
-                          _clockStyle = _clockStyle.copyWith(textColor: color);
-                        }),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: color,
-                            border: Border.all(
-                              color: isSelected ? Colors.white : Colors.transparent,
-                              width: 3,
-                            ),
-                            boxShadow: isSelected
-                                ? [BoxShadow(color: color.withOpacity(0.6), blurRadius: 8)]
-                                : null,
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                  // Clock Visibility Switch Tile
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceLight,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: SwitchListTile(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      title: const Text(
+                        'Show Clock on Dial',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        _clockStyle.isVisible
+                            ? 'Clock is active (drag preview to move freely)'
+                            : 'Clock removed (clean wallpaper only)',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                      ),
+                      value: _clockStyle.isVisible,
+                      activeThumbColor: AppTheme.accent,
+                      onChanged: (val) => setState(() {
+                        _clockStyle = _clockStyle.copyWith(isVisible: val);
+                      }),
+                    ),
                   ),
-                  const SizedBox(height: 20),
 
-                  // Section 4: Complications & Widgets
-                  _buildSectionHeader('📊  COMPLICATIONS'),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilterChip(
-                        label: const Text('📅 Date'),
-                        selected: _clockStyle.showDate,
-                        onSelected: (val) => setState(() {
-                          _clockStyle = _clockStyle.copyWith(showDate: val);
+                  if (_clockStyle.isVisible) ...[
+                    const SizedBox(height: 16),
+
+                    // Clock Size
+                    Row(
+                      children: [
+                        Text(
+                          'Size: ',
+                          style: TextStyle(fontSize: 13, color: Colors.grey[400], fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 8),
+                        ...ClockSize.values.map((size) {
+                          final isSelected = _clockStyle.size == size;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(size.label),
+                              selected: isSelected,
+                              selectedColor: AppTheme.accent,
+                              labelStyle: TextStyle(
+                                color: isSelected ? Colors.white : Colors.grey[400],
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                              onSelected: (_) => setState(() {
+                                _clockStyle = _clockStyle.copyWith(size: size);
+                              }),
+                            ),
+                          );
                         }),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Clock Position Presets & Custom Coordinates
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ...ClockPosition.presets.map((pos) {
+                            final isSelected = !_clockStyle.position.isCustom &&
+                                _clockStyle.position.label == pos.label;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(pos.label),
+                                selected: isSelected,
+                                selectedColor: AppTheme.accent,
+                                labelStyle: TextStyle(
+                                  color: isSelected ? Colors.white : Colors.grey[400],
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                                onSelected: (_) => setState(() {
+                                  _clockStyle = _clockStyle.copyWith(position: pos);
+                                }),
+                              ),
+                            );
+                          }),
+                          if (_clockStyle.position.isCustom)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text('Custom (${_clockStyle.position.x}, ${_clockStyle.position.y})'),
+                                selected: true,
+                                selectedColor: AppTheme.accent,
+                                labelStyle: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                                onSelected: (_) {},
+                              ),
+                            ),
+                        ],
                       ),
-                      FilterChip(
-                        label: const Text('🔋 Battery'),
-                        selected: _clockStyle.showBattery,
-                        onSelected: (val) => setState(() {
-                          _clockStyle = _clockStyle.copyWith(showBattery: val);
-                        }),
-                      ),
-                      FilterChip(
-                        label: const Text('🚶 Steps'),
-                        selected: _clockStyle.showSteps,
-                        onSelected: (val) => setState(() {
-                          _clockStyle = _clockStyle.copyWith(showSteps: val);
-                        }),
-                      ),
-                      FilterChip(
-                        label: const Text('❤️ Heart Rate'),
-                        selected: _clockStyle.showHeartRate,
-                        onSelected: (val) => setState(() {
-                          _clockStyle = _clockStyle.copyWith(showHeartRate: val);
-                        }),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 30),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(Icons.touch_app_outlined, size: 14, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Drag the clock in preview above to position freely.',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Section 3: Text & Accent Color
+                    _buildSectionHeader('🎨  TEXT COLOR'),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: _availableColors.map((color) {
+                        final isSelected = _clockStyle.textColor.toARGB32() == color.toARGB32();
+                        return GestureDetector(
+                          onTap: () => setState(() {
+                            _clockStyle = _clockStyle.copyWith(textColor: color);
+                          }),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: color,
+                              border: Border.all(
+                                color: isSelected ? Colors.white : Colors.transparent,
+                                width: 3,
+                              ),
+                              boxShadow: isSelected
+                                  ? [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 8)]
+                                  : null,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Section 4: Complications & Widgets
+                    _buildSectionHeader('📊  COMPLICATIONS'),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilterChip(
+                          label: const Text('📅 Date'),
+                          selected: _clockStyle.showDate,
+                          onSelected: (val) => setState(() {
+                            _clockStyle = _clockStyle.copyWith(showDate: val);
+                          }),
+                        ),
+                        FilterChip(
+                          label: const Text('🔋 Battery'),
+                          selected: _clockStyle.showBattery,
+                          onSelected: (val) => setState(() {
+                            _clockStyle = _clockStyle.copyWith(showBattery: val);
+                          }),
+                        ),
+                        FilterChip(
+                          label: const Text('🚶 Steps'),
+                          selected: _clockStyle.showSteps,
+                          onSelected: (val) => setState(() {
+                            _clockStyle = _clockStyle.copyWith(showSteps: val);
+                          }),
+                        ),
+                        FilterChip(
+                          label: const Text('❤️ Heart Rate'),
+                          selected: _clockStyle.showHeartRate,
+                          onSelected: (val) => setState(() {
+                            _clockStyle = _clockStyle.copyWith(showHeartRate: val);
+                          }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 30),
+                  ],
                 ],
               ),
             ),
