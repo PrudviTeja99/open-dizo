@@ -72,8 +72,8 @@ python3 python/flash_dizo_dial.py --file "watch dial templates/custom_wallpaper_
 ## CI/CD Automated Builds
 
 A GitHub Actions workflow is provided in [`.github/workflows/build.yml`](.github/workflows/build.yml) that automatically builds:
-- **Android APK:** `dizo-watch-sync-android.apk`
-- **Linux AppImage:** `DizoWatchSync-x86_64.AppImage`
+- **Android APK:** `open-dizo-android.apk`
+- **Linux AppImage:** `OpenDizo-x86_64.AppImage`
 
 The workflow triggers on:
 - Pushes and PRs touching `flutter/**`

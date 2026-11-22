@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Icon(Icons.watch_rounded, color: AppTheme.accent, size: 22),
             SizedBox(width: 8),
             Text(
-              'DIZO Companion',
+              'Open Dizo',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],

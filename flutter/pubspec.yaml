@@ -1,5 +1,5 @@
-name: dizo_watch_sync
-description: Open BLE companion and custom watch face studio for DIZO Watch D.
+name: open_dizo
+description: Open Dizo - Companion app and custom watch face studio for DIZO Watch D.
 publish_to: 'none'
 version: 1.1.0+2
 

@@ -1,6 +1,6 @@
-# dizo_watch_sync
+# Open Dizo
 
-A new Flutter project.
+Companion app and custom watch face studio for DIZO Watch D.
 
 ## Getting Started
 

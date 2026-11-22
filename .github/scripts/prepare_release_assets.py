@@ -45,7 +45,7 @@ def prepare_assets():
                     apk_candidates.append(os.path.join(root, f))
 
     if apk_candidates:
-        dest_apk = os.path.join(output_dir, f"dizo-watch-sync-{version}.apk")
+        dest_apk = os.path.join(output_dir, f"open-dizo-{version}.apk")
         shutil.copy2(apk_candidates[0], dest_apk)
         print(f"Prepared APK: {dest_apk}")
     else:
@@ -60,7 +60,7 @@ def prepare_assets():
                     appimage_candidates.append(os.path.join(root, f))
 
     if appimage_candidates:
-        dest_appimage = os.path.join(output_dir, f"dizo-watch-sync-{version}-x86_64.AppImage")
+        dest_appimage = os.path.join(output_dir, f"open-dizo-{version}-x86_64.AppImage")
         shutil.copy2(appimage_candidates[0], dest_appimage)
         os.chmod(dest_appimage, 0o755)
         print(f"Prepared AppImage: {dest_appimage}")

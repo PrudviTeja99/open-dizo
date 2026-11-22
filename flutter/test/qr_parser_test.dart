@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:dizo_watch_sync/core/utils/watch_qr_parser.dart';
+import 'package:open_dizo/core/utils/watch_qr_parser.dart';
 
 void main() {
   group('WatchQrParser Tests', () {

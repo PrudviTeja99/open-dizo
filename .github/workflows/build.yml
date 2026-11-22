@@ -53,7 +53,7 @@ jobs:
           cp android/app/src/main/AndroidManifest.xml /tmp/AndroidManifest.xml.bak
           
           # Scaffold full Android project files
-          flutter create --platforms=android --org com.dizosync .
+          flutter create --platforms=android --org bpt.studiohq .
           
           # Restore custom AndroidManifest.xml
           cp /tmp/AndroidManifest.xml.bak android/app/src/main/AndroidManifest.xml
@@ -67,13 +67,13 @@ jobs:
           flutter pub get
           flutter build apk --release
           mkdir -p ../dist
-          cp build/app/outputs/flutter-apk/app-release.apk ../dist/dizo-watch-sync-android.apk
+          cp build/app/outputs/flutter-apk/app-release.apk ../dist/open-dizo-android.apk
 
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dizo-watch-sync-android-apk
-          path: dist/dizo-watch-sync-android.apk
+          name: open-dizo-android-apk
+          path: dist/open-dizo-android.apk
 
   build-linux:
     name: Build Linux AppImage
@@ -106,7 +106,7 @@ jobs:
       - name: Scaffold Linux Platform & Build Binary
         run: |
           cd flutter
-          flutter create --platforms=linux --org com.dizosync .
+          flutter create --platforms=linux --org bpt.studiohq .
           flutter pub get
           flutter build linux --release
 
@@ -123,12 +123,12 @@ jobs:
           cp -r build/linux/x64/release/bundle/* "$APP_DIR/"
 
           # Create desktop entry
-          cat << 'EOF' > "$APP_DIR/dizo_watch_sync.desktop"
+          cat << 'EOF' > "$APP_DIR/open_dizo.desktop"
           [Desktop Entry]
-          Name=DIZO Watch Sync
-          Comment=Minimal BLE sync app for DIZO Watch D
-          Exec=dizo_watch_sync
-          Icon=dizo_watch_sync
+          Name=Open Dizo
+          Comment=Open-source BLE companion & dial studio for DIZO Watch D
+          Exec=open_dizo
+          Icon=open_dizo
           Terminal=false
           Type=Application
           Categories=Utility;
@@ -136,9 +136,9 @@ jobs:
 
           # Create desktop icon
           if [ -f "../wallpapers/dizo_wallpaper_240x286.png" ]; then
-            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/dizo_watch_sync.png"
+            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/open_dizo.png"
             cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/.DirIcon"
-            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/usr/share/icons/hicolor/256x256/apps/dizo_watch_sync.png"
+            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/usr/share/icons/hicolor/256x256/apps/open_dizo.png"
           fi
 
           # Create AppRun launcher
@@ -148,7 +148,7 @@ jobs:
           HERE=${SELF%/*}
           export PATH="${HERE}:${HERE}/usr/bin/:${PATH}"
           export LD_LIBRARY_PATH="${HERE}/lib:${HERE}/usr/lib/:${LD_LIBRARY_PATH}"
-          exec "${HERE}/dizo_watch_sync" "$@"
+          exec "${HERE}/open_dizo" "$@"
           EOF
           chmod +x "$APP_DIR/AppRun"
 
@@ -158,14 +158,14 @@ jobs:
           ./appimagetool.AppImage --appimage-extract
 
           mkdir -p ../dist
-          ARCH=x86_64 ./squashfs-root/AppRun "$APP_DIR" ../dist/DizoWatchSync-x86_64.AppImage
-          chmod +x ../dist/DizoWatchSync-x86_64.AppImage
+          ARCH=x86_64 ./squashfs-root/AppRun "$APP_DIR" ../dist/OpenDizo-x86_64.AppImage
+          chmod +x ../dist/OpenDizo-x86_64.AppImage
 
       - name: Upload Linux AppImage Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dizo-watch-sync-linux-appimage
-          path: dist/DizoWatchSync-x86_64.AppImage
+          name: open-dizo-linux-appimage
+          path: dist/OpenDizo-x86_64.AppImage
 
   release:
     name: Publish GitHub Release Assets
@@ -179,13 +179,13 @@ jobs:
       - name: Download Android Artifact
         uses: actions/download-artifact@v4
         with:
-          name: dizo-watch-sync-android-apk
+          name: open-dizo-android-apk
           path: release_assets
 
       - name: Download Linux Artifact
         uses: actions/download-artifact@v4
         with:
-          name: dizo-watch-sync-linux-appimage
+          name: open-dizo-linux-appimage
           path: release_assets
 
       - name: Prepare Versioned Release Assets & Checksums
@@ -198,7 +198,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.prep.outputs.tag }}
-          name: DIZO Watch Sync v${{ steps.prep.outputs.version }}
+          name: Open Dizo v${{ steps.prep.outputs.version }}
           draft: false
           prerelease: false
           generate_release_notes: true

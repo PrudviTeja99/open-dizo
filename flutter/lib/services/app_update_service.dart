@@ -36,7 +36,7 @@ class AppUpdateService {
     try {
       final uri = Uri.parse('https://api.github.com/repos/$repoOwner/$repoName/releases/latest');
       final request = await client.getUrl(uri);
-      request.headers.set('User-Agent', 'DIZO-Watch-Sync-App');
+      request.headers.set('User-Agent', 'Open-Dizo-App');
       request.headers.set('Accept', 'application/vnd.github.v3+json');
 
       final response = await request.close();
@@ -67,7 +67,7 @@ class AppUpdateService {
       }
 
       final downloadUrl = apkAsset['browser_download_url'] as String? ?? '';
-      final fileName = apkAsset['name'] as String? ?? 'dizo-watch-sync.apk';
+      final fileName = apkAsset['name'] as String? ?? 'open-dizo.apk';
       final sizeBytes = apkAsset['size'] as int? ?? 0;
 
       final isNewer = _isVersionNewer(tagName, currentVersion);
@@ -101,7 +101,7 @@ class AppUpdateService {
     final client = HttpClient();
     try {
       final request = await client.getUrl(Uri.parse(downloadUrl));
-      request.headers.set('User-Agent', 'DIZO-Watch-Sync-App');
+      request.headers.set('User-Agent', 'Open-Dizo-App');
       final response = await request.close();
 
       if (response.statusCode >= 300 && response.statusCode < 400) {
