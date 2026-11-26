@@ -256,73 +256,6 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
                     // Clock & Complications Overlay
                     if (widget.clockStyle.isVisible)
                       _buildClockOverlay(displayW, displayH),
-
-                    // Floating Selection Header (Coordinates & Done Button)
-                    if (_isSelected) ...[
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.75),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.5)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.open_with, size: 12, color: AppTheme.accent),
-                              const SizedBox(width: 4),
-                              Text(
-                                '(${widget.clockStyle.position.x}, ${widget.clockStyle.position.y})',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: GestureDetector(
-                          onTap: _deselect,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accent,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.accent.withValues(alpha: 0.5),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.check, size: 14, color: Colors.white),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Done',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -577,7 +510,10 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
       top: topPos,
       width: boxW,
       height: boxH,
-      child: clockContent,
+      child: TapRegion(
+        onTapOutside: _isSelected ? (_) => _deselect() : null,
+        child: clockContent,
+      ),
     );
   }
 

@@ -475,70 +475,78 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                                   : null,
                             ),
                             child: Stack(
+                              alignment: Alignment.center,
                               children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(8),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      // Miniature Preview Box
-                                      Container(
-                                        height: 44,
-                                        width: style.isStacked ? 38 : 68,
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(alpha: 0.6),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(
-                                            color: style.primaryColor.withValues(alpha: 0.45),
-                                            width: 1,
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        // Miniature Preview Box
+                                        Container(
+                                          height: 44,
+                                          width: style.isStacked ? 38 : 68,
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.6),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: style.primaryColor.withValues(alpha: 0.45),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Center(
+                                            child: style.isStacked
+                                                ? Column(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                                    children: [
+                                                      Text(
+                                                        '10',
+                                                        style: _getMiniatureStyle(style, isHour: true),
+                                                      ),
+                                                      Text(
+                                                        '08',
+                                                        style: _getMiniatureStyle(style, isHour: false),
+                                                      ),
+                                                    ],
+                                                  )
+                                                : Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Text('10', style: _getMiniatureStyle(style, isHour: true)),
+                                                      Text(':', style: _getMiniatureStyle(style, isHour: true)),
+                                                      Text('08', style: _getMiniatureStyle(style, isHour: false)),
+                                                    ],
+                                                  ),
                                           ),
                                         ),
-                                        child: Center(
-                                          child: style.isStacked
-                                              ? Column(
-                                                  mainAxisAlignment: MainAxisAlignment.center,
-                                                  children: [
-                                                    Text(
-                                                      '10',
-                                                      style: _getMiniatureStyle(style, isHour: true),
-                                                    ),
-                                                    Text(
-                                                      '08',
-                                                      style: _getMiniatureStyle(style, isHour: false),
-                                                    ),
-                                                  ],
-                                                )
-                                              : Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Text('10', style: _getMiniatureStyle(style, isHour: true)),
-                                                    Text(':', style: _getMiniatureStyle(style, isHour: true)),
-                                                    Text('08', style: _getMiniatureStyle(style, isHour: false)),
-                                                  ],
-                                                ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          style.name,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                            color: isSelected ? Colors.white : Colors.grey[400],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        style.name,
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                          color: isSelected ? Colors.white : Colors.grey[400],
+                                        Text(
+                                          style.subtitle.split(' • ').first,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            color: Colors.grey[500],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text(
-                                        style.subtitle.split(' • ').first,
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          color: Colors.grey[500],
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 if (isSelected)
