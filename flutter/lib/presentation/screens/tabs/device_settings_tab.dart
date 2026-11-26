@@ -250,6 +250,31 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
               ),
             ],
           ),
+          if (!kIsWeb && Platform.isAndroid) ...[
+            const Divider(height: 22, color: AppTheme.borderSubtle),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '24/7 Background Connection',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                    ),
+                    Text(
+                      'Keep BLE active for calls & alerts when closed',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                    ),
+                  ],
+                ),
+                Switch(
+                  value: widget.bleService.settings.keepAliveInBackground,
+                  onChanged: (val) => widget.bleService.setKeepAliveInBackground(val),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

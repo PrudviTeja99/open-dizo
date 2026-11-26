@@ -4,6 +4,7 @@ import 'package:open_dizo/models/notification_settings.dart';
 import 'package:open_dizo/models/historical_health.dart';
 import 'package:open_dizo/services/htsmart_protocol.dart';
 import 'package:open_dizo/services/weather_service.dart';
+import 'package:open_dizo/services/history_sync_parser.dart';
 
 void main() {
   group('WatchAlarm Tests', () {
@@ -179,6 +180,70 @@ void main() {
       final packet = HtsmartProtocol.buildStopFindPhonePacket();
       expect(packet[8], equals(0x02));
       expect(packet[10], equals(0x98));
+    });
+  });
+
+  group('HistorySyncParser Tests', () {
+    // Packed timestamp for 2026-11-26 10:00:00
+    // yearVal=26 (0b011010), month=11 (0b1011), day=26 (0b11010), hour=10 (0b01010), min=0, sec=0
+    final b0 = ((26 << 2) | (11 >> 2)) & 0xFF;
+    final b1 = ((11 << 6) | (26 << 1) | (10 >> 4)) & 0xFF;
+    final b2 = ((10 << 4) | (0 >> 2)) & 0xFF;
+    final b3 = 0;
+
+    test('Parses packed 4-byte timestamp accurately', () {
+      final dt = HistorySyncParser.parse4BytesTimestamp([b0, b1, b2, b3], 0);
+      expect(dt.year, equals(2026));
+      expect(dt.month, equals(11));
+      expect(dt.day, equals(26));
+      expect(dt.hour, equals(10));
+    });
+
+    test('Parses Step Stream into daily totals', () {
+      // 8-byte header: count=2, ts=[b0,b1,b2,b3], interval=30min
+      final stream = [
+        0x00, 0x02, b0, b1, b2, b3, 0x00, 0x1E,
+        0x01, 0xF4, // 500 steps
+        0x03, 0xE8, // 1000 steps
+      ];
+      final days = HistorySyncParser.parseStepStream(stream);
+      expect(days[DateTime(2026, 11, 26)], equals(1500));
+    });
+
+    test('Parses Sleep Stream into deep/light/awake minutes', () {
+      // 8-byte header: count=4, ts=[b0,b1,b2,b3], interval=5min
+      final stream = [
+        0x00, 0x04, b0, b1, b2, b3, 0x00, 0x05,
+        0x01, 0x01, // 10m deep
+        0x02,       // 5m light
+        0x03,       // 5m awake
+      ];
+      final sleep = HistorySyncParser.parseSleepStream(stream);
+      final summary = sleep[DateTime(2026, 11, 26)];
+      expect(summary, isNotNull);
+      expect(summary!.deepMinutes, equals(10));
+      expect(summary.lightMinutes, equals(5));
+      expect(summary.awakeMinutes, equals(5));
+    });
+
+    test('Parses Heart Rate & SpO2 streams accurately', () {
+      final hrStream = [
+        0x00, 0x03, b0, b1, b2, b3, 0x00, 0x1E,
+        60, 80, 100,
+      ];
+      final hrDays = HistorySyncParser.parseHeartRateStream(hrStream);
+      final hr = hrDays[DateTime(2026, 11, 26)];
+      expect(hr, isNotNull);
+      expect(hr!.minBpm, equals(60));
+      expect(hr.maxBpm, equals(100));
+      expect(hr.avgBpm, equals(80));
+
+      final spo2Stream = [
+        0x00, 0x02, b0, b1, b2, b3, 0x00, 0x1E,
+        97, 99,
+      ];
+      final spo2Days = HistorySyncParser.parseSpo2Stream(spo2Stream);
+      expect(spo2Days[DateTime(2026, 11, 26)], equals(98));
     });
   });
 }

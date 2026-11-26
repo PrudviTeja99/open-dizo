@@ -102,6 +102,21 @@ class MainActivity : FlutterActivity() {
                     stopFindPhoneAlert()
                     result.success(true)
                 }
+                "startBackgroundService" -> {
+                    val status = call.argument<String>("status") ?: "DIZO Watch D connected · Alerts active"
+                    val intent = Intent(this, DizoBackgroundService::class.java).apply {
+                        putExtra(DizoBackgroundService.EXTRA_STATUS, status)
+                    }
+                    ContextCompat.startForegroundService(this, intent)
+                    result.success(true)
+                }
+                "stopBackgroundService" -> {
+                    val intent = Intent(this, DizoBackgroundService::class.java).apply {
+                        action = DizoBackgroundService.ACTION_STOP
+                    }
+                    startService(intent)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }

@@ -19,6 +19,7 @@ import '../models/notification_settings.dart';
 import '../models/historical_health.dart';
 import 'htsmart_protocol.dart';
 import 'weather_service.dart';
+import 'history_sync_parser.dart';
 
 /// Central BLE Service managing connections, characteristic I/O, telemetry,
 /// and complete watch options/settings according to clean protocol specifications.
@@ -40,6 +41,9 @@ class BleService extends ChangeNotifier {
   List<WatchAlarm> _alarms = [];
   NotificationSettings _notificationSettings = const NotificationSettings();
   List<DailyHealthRecord> _weeklyHistory = [];
+  final Map<String, DailyHealthRecord> _persistedHistoryMap = {};
+  final Map<int, List<int>> _historySyncBuffers = {};
+  bool _hasSyncedRealHistory = false;
   WeatherSnapshot? _weather;
   bool _isSyncingWeather = false;
   bool _isFindingPhone = false;
@@ -89,6 +93,7 @@ class BleService extends ChangeNotifier {
   List<WatchAlarm> get alarms => List.unmodifiable(_alarms);
   NotificationSettings get notificationSettings => _notificationSettings;
   List<DailyHealthRecord> get weeklyHistory => List.unmodifiable(_weeklyHistory);
+  bool get hasSyncedRealHistory => _hasSyncedRealHistory;
   WeatherSnapshot? get weather => _weather;
   bool get isSyncingWeather => _isSyncingWeather;
   bool get isFindingPhone => _isFindingPhone;
@@ -97,13 +102,81 @@ class BleService extends ChangeNotifier {
   String? get lastDeviceMac => _lastDeviceMac;
   String? get lastDeviceName => _lastDeviceName;
 
+  static String _dateKey(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
   void _updateWeeklyHistory() {
-    _weeklyHistory = DailyHealthRecord.generateTrailingWeek(
-      todaySteps: _telemetry.steps ?? 0,
-      todayCalories: _telemetry.calories ?? 0,
-      todayDistance: (_telemetry.distanceMeters ?? 0.0) / 1000.0,
-      todayHeartRate: _telemetry.heartRate ?? 0,
-    );
+    if (!_hasSyncedRealHistory) {
+      _weeklyHistory = DailyHealthRecord.generateTrailingWeek(
+        todaySteps: _telemetry.steps ?? 0,
+        todayCalories: _telemetry.calories ?? 0,
+        todayDistance: (_telemetry.distanceMeters ?? 0.0) / 1000.0,
+        todayHeartRate: _telemetry.heartRate ?? 0,
+      );
+      return;
+    }
+
+    final now = DateTime.now();
+    final todayKey = _dateKey(now);
+    final list = <DailyHealthRecord>[];
+
+    for (int i = 6; i >= 1; i--) {
+      final date = now.subtract(Duration(days: i));
+      final key = _dateKey(date);
+      final rec = _persistedHistoryMap[key];
+      list.add(rec ??
+          DailyHealthRecord(
+            date: date,
+            steps: 0,
+            goalSteps: _settings.targetSteps,
+            caloriesKcal: 0,
+            distanceKm: 0.0,
+            avgHeartRate: 0,
+            maxHeartRate: 0,
+            minHeartRate: 0,
+            sleepMinutes: 0,
+            deepSleepMinutes: 0,
+            lightSleepMinutes: 0,
+          ));
+    }
+
+    // Today's record combines live TodayTotalData with any synced history
+    final todayHist = _persistedHistoryMap[todayKey];
+    final todaySteps = math.max(_telemetry.steps ?? 0, todayHist?.steps ?? 0);
+    final todayCals = math.max(_telemetry.calories ?? 0, todayHist?.caloriesKcal ?? 0);
+    final todayDist = math.max((_telemetry.distanceMeters ?? 0.0) / 1000.0, todayHist?.distanceKm ?? 0.0);
+    final todayHr = (_telemetry.heartRate ?? 0) > 0 ? _telemetry.heartRate! : (todayHist?.avgHeartRate ?? 72);
+    final todayDeep = (_telemetry.deepSleepMinutes ?? 0) > 0 ? _telemetry.deepSleepMinutes! : (todayHist?.deepSleepMinutes ?? 0);
+    final todayLight = (_telemetry.lightSleepMinutes ?? 0) > 0 ? _telemetry.lightSleepMinutes! : (todayHist?.lightSleepMinutes ?? 0);
+
+    list.add(DailyHealthRecord(
+      date: now,
+      steps: todaySteps,
+      goalSteps: _settings.targetSteps,
+      caloriesKcal: todayCals,
+      distanceKm: todayDist,
+      avgHeartRate: todayHr,
+      maxHeartRate: todayHist?.maxHeartRate ?? (todayHr + 35),
+      minHeartRate: todayHist?.minHeartRate ?? math.max(45, todayHr - 12),
+      sleepMinutes: todayDeep + todayLight,
+      deepSleepMinutes: todayDeep,
+      lightSleepMinutes: todayLight,
+      avgSpo2: _telemetry.spo2 ?? todayHist?.avgSpo2 ?? 98,
+      sbp: _telemetry.systolicBp ?? todayHist?.sbp ?? 118,
+      dbp: _telemetry.diastolicBp ?? todayHist?.dbp ?? 78,
+    ));
+
+    _weeklyHistory = list;
+  }
+
+  Future<void> _savePersistedHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = _persistedHistoryMap.map((k, v) => MapEntry(k, v.toJson()));
+      await prefs.setString('persisted_health_history', jsonEncode(encoded));
+    } catch (e) {
+      debugPrint('[BleService] Error saving history: $e');
+    }
   }
 
   Future<void> _loadPersistedData() async {
@@ -140,6 +213,18 @@ class BleService extends ChangeNotifier {
       final cachedNotifs = prefs.getString('cached_notification_settings');
       if (cachedNotifs != null) {
         _notificationSettings = NotificationSettings.decode(cachedNotifs);
+      }
+      final cachedHist = prefs.getString('persisted_health_history');
+      if (cachedHist != null) {
+        try {
+          final Map<String, dynamic> map = jsonDecode(cachedHist);
+          map.forEach((key, val) {
+            _persistedHistoryMap[key] = DailyHealthRecord.fromJson(val as Map<String, dynamic>);
+          });
+          if (_persistedHistoryMap.isNotEmpty) {
+            _hasSyncedRealHistory = true;
+          }
+        } catch (_) {}
       }
       _updateWeeklyHistory();
       notifyListeners();
@@ -202,6 +287,7 @@ class BleService extends ChangeNotifier {
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
       Permission.locationWhenInUse,
+      Permission.notification,
     ].request();
 
     final scanGranted = (statuses[Permission.bluetoothScan]?.isGranted ?? false) ||
@@ -485,6 +571,11 @@ class BleService extends ChangeNotifier {
       // Auto-synchronize all metrics immediately upon connection
       await syncAll(isAuto: true);
 
+      // Start background foreground service for 24/7 calls & alerts
+      if (_settings.keepAliveInBackground) {
+        await _syncBackgroundServiceState();
+      }
+
       // Start periodic auto-refresh timer (every 60 seconds while connected)
       _periodicSyncTimer?.cancel();
       _periodicSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
@@ -535,6 +626,7 @@ class BleService extends ChangeNotifier {
     _charFF03 = null;
     _charFEA1 = null;
     // Retain _telemetry cache so health metrics remain visible on the dashboard!
+    _syncBackgroundServiceState();
     notifyListeners();
   }
 
@@ -745,9 +837,16 @@ class BleService extends ChangeNotifier {
       return;
     }
 
-    // 6. Historical sync stream chunk or finish (Cmd 0x05, Key 0x08)
+    // 6. Historical sync data stream chunks (Cmd 0x05, Key 0x02=Step, 0x03=Sleep, 0x04=HR, 0x05=SpO2)
+    if (cmdId == 0x05 && (keyId >= 0x02 && keyId <= 0x05)) {
+      _historySyncBuffers.putIfAbsent(keyId, () => []).addAll(keyData);
+      log('History chunk received (Key 0x${keyId.toRadixString(16)}, ${keyData.length}B)', type: LogType.data);
+      return;
+    }
+
+    // 6b. Historical sync stream finish (Cmd 0x05, Key 0x08)
     if (cmdId == 0x05 && keyId == 0x08) {
-      // Send sync acknowledgement
+      _finalizeHistorySyncBuffers();
       writeFF02(HtsmartProtocol.buildSyncAckPacket(success: true, seq: _nextSeq()), 'Sync ACK');
       return;
     }
@@ -1045,6 +1144,11 @@ class BleService extends ChangeNotifier {
       // 7. Notification config query
       await queryNotificationConfig();
       await Future.delayed(const Duration(milliseconds: 150));
+
+      // 8. Pull historical flash records on manual sync
+      if (!isAuto) {
+        await syncWatchHistory();
+      }
 
       _telemetry = _telemetry.copyWith(lastSyncTime: DateTime.now());
       await _saveTelemetry();
@@ -1690,6 +1794,106 @@ class BleService extends ChangeNotifier {
       );
       await writeFF02(packet, 'Update Body Profile');
     }
+  }
+
+  // ==========================================
+  // 24/7 Background Foreground Service & True History Sync
+  // ==========================================
+
+  Future<void> _syncBackgroundServiceState() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      if (_settings.keepAliveInBackground && _isConnected) {
+        await _notifMethodChannel.invokeMethod('startBackgroundService', {
+          'status': 'DIZO Watch D connected · Calls & alerts active',
+        });
+      } else {
+        await _notifMethodChannel.invokeMethod('stopBackgroundService');
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setKeepAliveInBackground(bool enabled) async {
+    _settings = _settings.copyWith(keepAliveInBackground: enabled);
+    notifyListeners();
+    await _saveSettings();
+    await _syncBackgroundServiceState();
+  }
+
+  Future<void> syncWatchHistory() async {
+    if (!_isConnected) return;
+    _historySyncBuffers.clear();
+    log('Pulling stored flash history from watch...');
+
+    // Request Steps (1), Sleep (2), Heart Rate (3), SpO2 (4)
+    for (final dataType in [1, 2, 3, 4]) {
+      final packet = HtsmartProtocol.buildSyncDataPacket(dataType, seq: _nextSeq());
+      await writeFF02(packet, 'History Sync (type=$dataType)');
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
+  void _finalizeHistorySyncBuffers() {
+    if (_historySyncBuffers.isEmpty) return;
+
+    final stepDays = _historySyncBuffers.containsKey(0x02)
+        ? HistorySyncParser.parseStepStream(_historySyncBuffers[0x02]!)
+        : <DateTime, int>{};
+    final sleepDays = _historySyncBuffers.containsKey(0x03)
+        ? HistorySyncParser.parseSleepStream(_historySyncBuffers[0x03]!)
+        : <DateTime, HistorySleepSummary>{};
+    final hrDays = _historySyncBuffers.containsKey(0x04)
+        ? HistorySyncParser.parseHeartRateStream(_historySyncBuffers[0x04]!)
+        : <DateTime, HistoryHeartRateSummary>{};
+    final spo2Days = _historySyncBuffers.containsKey(0x05)
+        ? HistorySyncParser.parseSpo2Stream(_historySyncBuffers[0x05]!)
+        : <DateTime, int>{};
+
+    final allDates = <DateTime>{
+      ...stepDays.keys,
+      ...sleepDays.keys,
+      ...hrDays.keys,
+      ...spo2Days.keys,
+    };
+
+    if (allDates.isEmpty) return;
+
+    for (final d in allDates) {
+      final key = _dateKey(d);
+      final existing = _persistedHistoryMap[key];
+      final steps = stepDays[d] ?? existing?.steps ?? 0;
+      final sleep = sleepDays[d];
+      final hr = hrDays[d];
+      final spo2 = spo2Days[d];
+
+      // Estimate calories & distance from steps if not directly present
+      final estCals = (steps * 0.036).round();
+      final estDist = (steps * 0.00072);
+
+      _persistedHistoryMap[key] = DailyHealthRecord(
+        date: d,
+        steps: steps,
+        goalSteps: _settings.targetSteps,
+        caloriesKcal: existing?.caloriesKcal ?? estCals,
+        distanceKm: existing?.distanceKm ?? estDist,
+        avgHeartRate: hr?.avgBpm ?? existing?.avgHeartRate ?? 72,
+        maxHeartRate: hr?.maxBpm ?? existing?.maxHeartRate ?? 110,
+        minHeartRate: hr?.minBpm ?? existing?.minHeartRate ?? 56,
+        sleepMinutes: sleep != null
+            ? (sleep.deepMinutes + sleep.lightMinutes)
+            : (existing?.sleepMinutes ?? 0),
+        deepSleepMinutes: sleep?.deepMinutes ?? existing?.deepSleepMinutes ?? 0,
+        lightSleepMinutes: sleep?.lightMinutes ?? existing?.lightSleepMinutes ?? 0,
+        avgSpo2: spo2 ?? existing?.avgSpo2 ?? 98,
+      );
+    }
+
+    _hasSyncedRealHistory = true;
+    _historySyncBuffers.clear();
+    _updateWeeklyHistory();
+    _savePersistedHistory();
+    notifyListeners();
+    log('Watch history parsed & saved (${allDates.length} days) ✓', type: LogType.success);
   }
 
   static String _hex(List<int> bytes) =>

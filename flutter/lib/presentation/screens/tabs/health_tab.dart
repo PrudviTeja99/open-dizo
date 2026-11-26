@@ -360,13 +360,35 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Weekly Analytics',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textPrimary,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Weekly Analytics',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: widget.bleService.isConnected
+                        ? () => widget.bleService.syncWatchHistory()
+                        : null,
+                    child: Text(
+                      widget.bleService.hasSyncedRealHistory
+                          ? 'Watch Flash Data · Tap to refresh'
+                          : (widget.bleService.isConnected ? 'Tap to sync Watch Flash' : 'Preview Trend'),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: widget.bleService.hasSyncedRealHistory
+                            ? AppTheme.success
+                            : AppTheme.accent,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               Container(
                 padding: const EdgeInsets.all(3),

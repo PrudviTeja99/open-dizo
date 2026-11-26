@@ -27,6 +27,11 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
+    <!-- 24/7 Background Foreground Service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- BLE hardware feature (not required, but recommended) -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -85,6 +90,12 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- 24/7 Connected Device Foreground Service -->
+        <service
+            android:name=".DizoBackgroundService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
 
         <meta-data
             android:name="flutterEmbedding"

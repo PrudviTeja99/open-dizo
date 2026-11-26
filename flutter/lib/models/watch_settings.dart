@@ -54,6 +54,7 @@ class WatchSettings {
   final double heightCm;
   final double weightKg;
   final String weatherCity;
+  final bool keepAliveInBackground;
 
   const WatchSettings({
     this.brightness = 3,
@@ -94,6 +95,7 @@ class WatchSettings {
     this.heightCm = 175.0,
     this.weightKg = 70.0,
     this.weatherCity = 'Bengaluru',
+    this.keepAliveInBackground = true,
   });
 
   WatchSettings copyWith({
@@ -135,6 +137,7 @@ class WatchSettings {
     double? heightCm,
     double? weightKg,
     String? weatherCity,
+    bool? keepAliveInBackground,
   }) {
     return WatchSettings(
       brightness: brightness ?? this.brightness,
@@ -175,6 +178,7 @@ class WatchSettings {
       heightCm: heightCm ?? this.heightCm,
       weightKg: weightKg ?? this.weightKg,
       weatherCity: weatherCity ?? this.weatherCity,
+      keepAliveInBackground: keepAliveInBackground ?? this.keepAliveInBackground,
     );
   }
 
@@ -218,6 +222,7 @@ class WatchSettings {
       'heightCm': heightCm,
       'weightKg': weightKg,
       'weatherCity': weatherCity,
+      'keepAliveInBackground': keepAliveInBackground,
     };
   }
 
@@ -261,6 +266,7 @@ class WatchSettings {
       heightCm: (map['heightCm'] as num?)?.toDouble() ?? 175.0,
       weightKg: (map['weightKg'] as num?)?.toDouble() ?? 70.0,
       weatherCity: map['weatherCity'] as String? ?? 'Bengaluru',
+      keepAliveInBackground: map['keepAliveInBackground'] as bool? ?? true,
     );
   }
 
