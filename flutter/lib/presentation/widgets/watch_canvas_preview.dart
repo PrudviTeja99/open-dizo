@@ -67,10 +67,26 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
     _lastTouchPos = globalPos;
     final dx = delta.dx / widget.scale;
     final dy = delta.dy / widget.scale;
-    final maxDragX = (240.0 - widget.clockStyle.boxWidth);
-    final maxDragY = (286.0 - widget.clockStyle.boxHeight);
-    _currentX = (_currentX + dx).clamp(0.0, maxDragX);
-    _currentY = (_currentY + dy).clamp(0.0, maxDragY);
+    final boxW = widget.clockStyle.boxWidth;
+    final boxH = widget.clockStyle.boxHeight;
+    final maxDragX = (240.0 - boxW);
+    final maxDragY = (286.0 - boxH);
+
+    double nextX = (_currentX + dx).clamp(0.0, maxDragX);
+    double nextY = (_currentY + dy).clamp(0.0, maxDragY);
+
+    // Subtle magnetic snap to center axes
+    final centerXTarget = 120.0 - boxW / 2;
+    final centerYTarget = 143.0 - boxH / 2;
+    if ((nextX - centerXTarget).abs() < 3.5) {
+      nextX = centerXTarget;
+    }
+    if ((nextY - centerYTarget).abs() < 3.5) {
+      nextY = centerYTarget;
+    }
+
+    _currentX = nextX;
+    _currentY = nextY;
     widget.onClockDragged!(_currentX.round(), _currentY.round());
   }
 
@@ -253,6 +269,20 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
                         ),
                       ),
 
+                    // Alignment Guiding Lines when dragging/holding clock
+                    if (_isSelected)
+                      IgnorePointer(
+                        child: CustomPaint(
+                          size: const Size(displayW, displayH),
+                          painter: _AlignmentGuidesPainter(
+                            clockLeft: _currentX,
+                            clockTop: _currentY,
+                            clockWidth: widget.clockStyle.boxWidth,
+                            clockHeight: widget.clockStyle.boxHeight,
+                          ),
+                        ),
+                      ),
+
                     // Clock & Complications Overlay
                     if (widget.clockStyle.isVisible)
                       _buildClockOverlay(displayW, displayH),
@@ -282,8 +312,7 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
     final now = DateTime.now();
     final hourStr = now.hour.toString().padLeft(2, '0');
     final minStr = now.minute.toString().padLeft(2, '0');
-    final dayStr = _getDayName(now.weekday);
-    final dateStr = '$dayStr ${now.day}';
+    final dateStr = widget.clockStyle.dateStyle.format(now);
 
     final boxW = widget.clockStyle.boxWidth;
     final boxH = widget.clockStyle.boxHeight;
@@ -399,19 +428,7 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
                   ),
                 if (widget.clockStyle.showDate) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    dateStr.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: (10.5 * widget.clockStyle.size.scale).clamp(9.0, 13.0),
-                      fontWeight: FontWeight.w800,
-                      height: 1.0,
-                      letterSpacing: 0.8,
-                      color: primaryColor.withValues(alpha: 0.95),
-                      shadows: const [
-                        Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 1)),
-                      ],
-                    ),
-                  ),
+                  _buildDateWidget(dateStr, primaryColor, isVertical: true),
                 ],
               ] else ...[
                 // Horizontal Clock in standard box (120x73)
@@ -472,19 +489,7 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
                 ),
                 if (widget.clockStyle.showDate) ...[
                   const SizedBox(height: 3),
-                  Text(
-                    dateStr.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: (12.5 * widget.clockStyle.size.scale).clamp(10.0, 15.0),
-                      fontWeight: FontWeight.w800,
-                      height: 1.0,
-                      letterSpacing: 1.0,
-                      color: primaryColor.withValues(alpha: 0.95),
-                      shadows: const [
-                        Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 1)),
-                      ],
-                    ),
-                  ),
+                  _buildDateWidget(dateStr, primaryColor, isVertical: false),
                 ],
               ],
             ],
@@ -517,8 +522,133 @@ class _WatchCanvasPreviewState extends State<WatchCanvasPreview> {
     );
   }
 
-  String _getDayName(int weekday) {
-    const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-    return days[(weekday - 1) % 7];
+  Widget _buildDateWidget(String dateStr, Color primaryColor, {required bool isVertical}) {
+    final fontSize = isVertical
+        ? (10.5 * widget.clockStyle.size.scale).clamp(9.0, 12.5)
+        : (12.0 * widget.clockStyle.size.scale).clamp(10.0, 14.5);
+
+    final textWidget = Text(
+      dateStr.toUpperCase(),
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w800,
+        height: 1.0,
+        letterSpacing: isVertical ? 0.6 : 0.9,
+        color: primaryColor.withValues(alpha: 0.95),
+        shadows: const [
+          Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 1)),
+        ],
+      ),
+    );
+
+    if (widget.clockStyle.dateStyle == DateStyle.pillBadge) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: primaryColor.withValues(alpha: 0.5),
+            width: 1,
+          ),
+        ),
+        child: textWidget,
+      );
+    }
+
+    return textWidget;
+  }
+}
+
+/// Renders alignment guiding lines when the clock is held and dragged across the watch display
+class _AlignmentGuidesPainter extends CustomPainter {
+  final double clockLeft;
+  final double clockTop;
+  final double clockWidth;
+  final double clockHeight;
+
+  const _AlignmentGuidesPainter({
+    required this.clockLeft,
+    required this.clockTop,
+    required this.clockWidth,
+    required this.clockHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centerX = size.width / 2; // 120.0
+    final centerY = size.height / 2; // 143.0
+    final clockCenterX = clockLeft + clockWidth / 2;
+    final clockCenterY = clockTop + clockHeight / 2;
+
+    final isAlignedX = (clockCenterX - centerX).abs() < 2.0;
+    final isAlignedY = (clockCenterY - centerY).abs() < 2.0;
+
+    // 1. Subtle safe-zone margin inset (14px)
+    final marginPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.14)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTRB(14, 14, size.width - 14, size.height - 14),
+        const Radius.circular(14),
+      ),
+      marginPaint,
+    );
+
+    // 2. Vertical Center Guide Line (x = 120)
+    final vPaint = Paint()
+      ..color = isAlignedX ? AppTheme.accent : Colors.white.withValues(alpha: 0.30)
+      ..strokeWidth = isAlignedX ? 1.5 : 0.8
+      ..style = PaintingStyle.stroke;
+
+    if (isAlignedX) {
+      canvas.drawLine(Offset(centerX, 0), Offset(centerX, size.height), vPaint);
+    } else {
+      _drawDashedLine(canvas, Offset(centerX, 0), Offset(centerX, size.height), vPaint);
+    }
+
+    // 3. Horizontal Center Guide Line (y = 143)
+    final hPaint = Paint()
+      ..color = isAlignedY ? AppTheme.accent : Colors.white.withValues(alpha: 0.30)
+      ..strokeWidth = isAlignedY ? 1.5 : 0.8
+      ..style = PaintingStyle.stroke;
+
+    if (isAlignedY) {
+      canvas.drawLine(Offset(0, centerY), Offset(size.width, centerY), hPaint);
+    } else {
+      _drawDashedLine(canvas, Offset(0, centerY), Offset(size.width, centerY), hPaint);
+    }
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset p1, Offset p2, Paint paint) {
+    const dashLen = 4.0;
+    const gapLen = 4.0;
+    final dx = p2.dx - p1.dx;
+    final dy = p2.dy - p1.dy;
+    final dist = (dx.abs() > dy.abs()) ? dx.abs() : dy.abs();
+    if (dist <= 0) return;
+
+    final stepX = dx / dist;
+    final stepY = dy / dist;
+    double cur = 0;
+    while (cur < dist) {
+      final end = (cur + dashLen).clamp(0.0, dist);
+      canvas.drawLine(
+        Offset(p1.dx + stepX * cur, p1.dy + stepY * cur),
+        Offset(p1.dx + stepX * end, p1.dy + stepY * end),
+        paint,
+      );
+      cur += dashLen + gapLen;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AlignmentGuidesPainter oldDelegate) {
+    return oldDelegate.clockLeft != clockLeft ||
+        oldDelegate.clockTop != clockTop ||
+        oldDelegate.clockWidth != clockWidth ||
+        oldDelegate.clockHeight != clockHeight;
   }
 }

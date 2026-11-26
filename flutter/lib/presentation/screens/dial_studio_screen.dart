@@ -431,12 +431,27 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Section 2: Clock Styles Carousel (like wallpaper gallery)
-                  _buildSectionHeader('🎨  CLOCK STYLES'),
+                  // Section 2: Clock Styles Carousel (disabled when clock is hidden)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildSectionHeader('🎨  CLOCK STYLES'),
+                      if (!_clockStyle.isVisible)
+                        const Text(
+                          'Clock disabled',
+                          style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontStyle: FontStyle.italic),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 10),
-                  SizedBox(
-                    height: 114,
-                    child: ListView(
+                  AnimatedOpacity(
+                    opacity: _clockStyle.isVisible ? 1.0 : 0.35,
+                    duration: const Duration(milliseconds: 200),
+                    child: IgnorePointer(
+                      ignoring: !_clockStyle.isVisible,
+                      child: SizedBox(
+                        height: 114,
+                        child: ListView(
                       scrollDirection: Axis.horizontal,
                       children: ClockTemplateStyle.gallery.map((style) {
                         final isSelected = _clockStyle.templateStyle.id == style.id;
@@ -567,6 +582,8 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                           ),
                         );
                       }).toList(),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -827,35 +844,46 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B).withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF334155)),
+                    if (_clockStyle.showDate) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        'Date Format Style:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[400], fontWeight: FontWeight.w600),
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.info_outline, color: Color(0xFF38BDF8), size: 18),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Watch hardware specification: Custom wallpaper dials render Time and Date with 1:1 pixel accuracy. Multi-metric complications (steps, battery, heart rate) are featured on factory built-in dials.',
-                              style: TextStyle(fontSize: 11, color: Colors.blueGrey[200], height: 1.3),
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 38,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: DateStyle.values.map((ds) {
+                            final isSelected = _clockStyle.dateStyle == ds;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text('${ds.sample} (${ds.label})'),
+                                selected: isSelected,
+                                selectedColor: AppTheme.accent,
+                                labelStyle: TextStyle(
+                                  color: isSelected ? const Color(0xFF0A0C10) : Colors.grey[300],
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                                onSelected: (_) => setState(() {
+                                  _clockStyle = _clockStyle.copyWith(dateStyle: ds);
+                                }),
+                              ),
+                            );
+                          }).toList(),
+                        ),
                       ),
-                    ),
+                    ],
                     const SizedBox(height: 30),
                   ],
                 ],
               ),
             ),
 
-            // Bottom Action Bar: Cancel & Confirm
+            // Bottom Action Bar
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: const BoxDecoration(
@@ -864,18 +892,20 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
               ),
               child: Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        side: BorderSide(color: Colors.grey[700]!),
+                  if (!widget.isEmbedded) ...[
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          side: BorderSide(color: Colors.grey[700]!),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(color: Colors.white)),
                       ),
-                      child: const Text('Cancel', style: TextStyle(color: Colors.white)),
                     ),
-                  ),
-                  const SizedBox(width: 14),
+                    const SizedBox(width: 14),
+                  ],
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
@@ -885,7 +915,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         backgroundColor: AppTheme.accent,
-                        foregroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF0A0C10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),

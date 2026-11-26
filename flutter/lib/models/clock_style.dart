@@ -30,6 +30,40 @@ enum ClockFontFamily {
   const ClockFontFamily(this.label, this.description);
 }
 
+enum DateStyle {
+  dayNumber('THU 26', 'Day & Date'),
+  slashNumeric('11/26', 'Numeric'),
+  daySlash('THU, 11/26', 'Full'),
+  monthDay('NOV 26', 'Month'),
+  pillBadge('THU · 26', 'Pill');
+
+  final String sample;
+  final String label;
+  const DateStyle(this.sample, this.label);
+
+  String format(DateTime dt) {
+    const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    final dayName = days[(dt.weekday - 1) % 7];
+    final monthName = months[(dt.month - 1) % 12];
+    final mm = dt.month.toString().padLeft(2, '0');
+    final dd = dt.day.toString().padLeft(2, '0');
+
+    switch (this) {
+      case DateStyle.dayNumber:
+        return '$dayName ${dt.day}';
+      case DateStyle.slashNumeric:
+        return '$mm/$dd';
+      case DateStyle.daySlash:
+        return '$dayName, $mm/$dd';
+      case DateStyle.monthDay:
+        return '$monthName ${dt.day}';
+      case DateStyle.pillBadge:
+        return '$dayName · ${dt.day}';
+    }
+  }
+}
+
 class ClockTemplateStyle {
   final String id;
   final String name;
@@ -251,6 +285,7 @@ class ClockStyle {
   final Color textColor;
   final bool isStacked;
   final bool showDate;
+  final DateStyle dateStyle;
   final bool showBattery;
   final bool showSteps;
   final bool showHeartRate;
@@ -263,6 +298,7 @@ class ClockStyle {
     this.textColor = Colors.white,
     this.isStacked = false,
     this.showDate = true,
+    this.dateStyle = DateStyle.dayNumber,
     this.showBattery = false,
     this.showSteps = false,
     this.showHeartRate = false,
@@ -285,6 +321,7 @@ class ClockStyle {
     Color? textColor,
     bool? isStacked,
     bool? showDate,
+    DateStyle? dateStyle,
     bool? showBattery,
     bool? showSteps,
     bool? showHeartRate,
@@ -297,6 +334,7 @@ class ClockStyle {
       textColor: textColor ?? this.textColor,
       isStacked: isStacked ?? this.isStacked,
       showDate: showDate ?? this.showDate,
+      dateStyle: dateStyle ?? this.dateStyle,
       showBattery: showBattery ?? this.showBattery,
       showSteps: showSteps ?? this.showSteps,
       showHeartRate: showHeartRate ?? this.showHeartRate,
