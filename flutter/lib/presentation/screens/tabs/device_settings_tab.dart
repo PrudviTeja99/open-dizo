@@ -864,6 +864,7 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
   Widget _buildWeatherCard(WatchSettings settings, bool isConnected) {
     final weather = widget.bleService.weather;
     final isSyncing = widget.bleService.isSyncingWeather;
+    final useGps = settings.weatherUseGps;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -895,27 +896,63 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
                       Text(
                         weather != null
                             ? '${weather.city} · ${weather.currentTempC}°C'
-                            : settings.weatherCity,
+                            : (useGps ? 'GPS Location' : settings.weatherCity),
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
                       ),
                       Text(
                         weather != null
                             ? '${weather.conditionLabel} · H:${weather.highTempC}° L:${weather.lowTempC}°'
-                            : 'Tap Sync to fetch live forecast',
+                            : (useGps ? 'Will detect city automatically' : 'Tap Sync to fetch live forecast'),
                         style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
                       ),
                     ],
                   ),
                 ],
               ),
-              IconButton(
-                tooltip: 'Change City',
-                icon: const Icon(Icons.edit_location_alt_rounded, color: AppTheme.textSecondary, size: 20),
-                onPressed: () => _showCityDialog(settings.weatherCity),
-              ),
+              if (!useGps)
+                IconButton(
+                  tooltip: 'Change City',
+                  icon: const Icon(Icons.edit_location_alt_rounded, color: AppTheme.textSecondary, size: 20),
+                  onPressed: () => _showCityDialog(settings.weatherCity),
+                ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
+          // GPS toggle row
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.gps_fixed_rounded, size: 16, color: AppTheme.textSecondary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Auto-detect city via GPS',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                  ),
+                ),
+                Switch(
+                  value: useGps,
+                  onChanged: isSyncing
+                      ? null
+                      : (val) async {
+                          await widget.bleService.updateWeatherUseGps(val);
+                          if (val && mounted) {
+                            // Immediately trigger a GPS sync when user enables it
+                            _syncWeatherGpsOrCity(useGps: true);
+                          }
+                        },
+                  activeColor: AppTheme.accent,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -931,37 +968,48 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
                     )
-                  : const Icon(Icons.cloud_sync_rounded, size: 18),
+                  : Icon(useGps ? Icons.my_location_rounded : Icons.cloud_sync_rounded, size: 18),
               label: Text(
-                isSyncing ? 'Fetching Forecast...' : (isConnected ? 'Sync Weather to Watch' : 'Preview Weather'),
+                isSyncing
+                    ? 'Fetching Forecast...'
+                    : (useGps
+                        ? (isConnected ? 'Sync GPS Weather to Watch' : 'Preview GPS Weather')
+                        : (isConnected ? 'Sync Weather to Watch' : 'Preview Weather')),
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
               onPressed: isSyncing
                   ? null
-                  : () async {
-                      try {
-                        final snap = await widget.bleService.syncWeather();
-                        if (mounted && snap != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Weather synced: ${snap.city} ${snap.currentTempC}°C (${snap.conditionLabel})'),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Weather error: $e'), backgroundColor: AppTheme.heartRate),
-                          );
-                        }
-                      }
-                    },
+                  : () => _syncWeatherGpsOrCity(useGps: useGps),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _syncWeatherGpsOrCity({required bool useGps}) async {
+    try {
+      final snap = useGps
+          ? await widget.bleService.syncWeatherFromGps()
+          : await widget.bleService.syncWeather();
+      if (mounted && snap != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Weather synced: ${snap.city} ${snap.currentTempC}°C (${snap.conditionLabel})'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(useGps ? 'GPS location error: $e' : 'Weather error: $e'),
+            backgroundColor: AppTheme.heartRate,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildGoalsProfileCard(WatchSettings settings) {

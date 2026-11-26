@@ -1,7 +1,7 @@
 name: open_dizo
 description: Open Dizo - Companion app and custom watch face studio for DIZO Watch D.
 publish_to: 'none'
-version: 1.2.9+17
+version: 1.3.0+18
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

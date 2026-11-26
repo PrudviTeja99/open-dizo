@@ -72,6 +72,9 @@ class WatchSettings {
   final String languageCode;
   final String languageTarget; // 'both', 'appOnly', 'watchOnly'
 
+  // Weather Location Source
+  final bool weatherUseGps; // true = auto-detect via GPS, false = use weatherCity
+
   const WatchSettings({
     this.brightness = 3,
     this.screenTimeoutSeconds = 5,
@@ -124,6 +127,7 @@ class WatchSettings {
     this.warnBpDbpLower = 60,
     this.languageCode = 'en',
     this.languageTarget = 'both',
+    this.weatherUseGps = false,
   });
 
   WatchSettings copyWith({
@@ -178,6 +182,7 @@ class WatchSettings {
     int? warnBpDbpLower,
     String? languageCode,
     String? languageTarget,
+    bool? weatherUseGps,
   }) {
     return WatchSettings(
       brightness: brightness ?? this.brightness,
@@ -231,6 +236,7 @@ class WatchSettings {
       warnBpDbpLower: warnBpDbpLower ?? this.warnBpDbpLower,
       languageCode: languageCode ?? this.languageCode,
       languageTarget: languageTarget ?? this.languageTarget,
+      weatherUseGps: weatherUseGps ?? this.weatherUseGps,
     );
   }
 
@@ -287,6 +293,7 @@ class WatchSettings {
       'warnBpDbpLower': warnBpDbpLower,
       'languageCode': languageCode,
       'languageTarget': languageTarget,
+      'weatherUseGps': weatherUseGps,
     };
   }
 
@@ -343,6 +350,7 @@ class WatchSettings {
       warnBpDbpLower: map['warnBpDbpLower'] as int? ?? 60,
       languageCode: map['languageCode'] as String? ?? 'en',
       languageTarget: map['languageTarget'] as String? ?? 'both',
+      weatherUseGps: map['weatherUseGps'] as bool? ?? false,
     );
   }
 

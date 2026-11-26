@@ -1733,6 +1733,54 @@ class BleService extends ChangeNotifier {
   // Weather Sync, Find My Phone & Goals/Profile
   // ==========================================
 
+  Future<WeatherSnapshot?> syncWeatherFromGps() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      throw Exception('GPS location is only available on Android');
+    }
+    _isSyncingWeather = true;
+    notifyListeners();
+    try {
+      final locResult = await _notifMethodChannel.invokeMethod<Map>('getLastKnownLocation');
+      if (locResult == null) throw Exception('Could not obtain location');
+      final lat = (locResult['lat'] as num).toDouble();
+      final lon = (locResult['lon'] as num).toDouble();
+      final snapshot = await WeatherService.fetchWeatherForCoords(lat, lon);
+      _weather = snapshot;
+      _settings = _settings.copyWith(weatherUseGps: true);
+      await _saveSettings();
+      notifyListeners();
+
+      if (_isConnected) {
+        final packet = HtsmartProtocol.buildWeatherPacket(
+          city: snapshot.city,
+          currentTempC: snapshot.currentTempC,
+          lowTempC: snapshot.lowTempC,
+          highTempC: snapshot.highTempC,
+          weatherCode: snapshot.watchWeatherCode,
+          pressureHpa: snapshot.pressureHpa,
+          forecasts: snapshot.forecasts
+              .map((f) => (low: f.lowTempC, high: f.highTempC, code: f.watchWeatherCode))
+              .toList(),
+          seq: _nextSeq(),
+        );
+        await writeFF02(packet, 'Sync GPS Weather (${snapshot.city} ${snapshot.currentTempC}°C)');
+      }
+      return snapshot;
+    } catch (e) {
+      log('GPS weather sync failed: $e', type: LogType.error);
+      rethrow;
+    } finally {
+      _isSyncingWeather = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateWeatherUseGps(bool useGps) async {
+    _settings = _settings.copyWith(weatherUseGps: useGps);
+    await _saveSettings();
+    notifyListeners();
+  }
+
   Future<WeatherSnapshot?> syncWeather({String? city}) async {
     final targetCity = (city ?? _settings.weatherCity).trim();
     if (targetCity.isEmpty) return null;

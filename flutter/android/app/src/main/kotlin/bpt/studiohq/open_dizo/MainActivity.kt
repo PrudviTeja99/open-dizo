@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
 import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -124,6 +126,39 @@ class MainActivity : FlutterActivity() {
                     val action = call.argument<String>("action") ?: ""
                     handleMediaAction(action)
                     result.success(true)
+                }
+                "getLastKnownLocation" -> {
+                    val fineGranted = ContextCompat.checkSelfPermission(
+                        this, Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                    val coarseGranted = ContextCompat.checkSelfPermission(
+                        this, Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (!fineGranted && !coarseGranted) {
+                        result.error("PERMISSION_DENIED", "Location permission not granted", null)
+                        return@setMethodCallHandler
+                    }
+                    val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                    if (lm == null) {
+                        result.error("UNAVAILABLE", "LocationManager unavailable", null)
+                        return@setMethodCallHandler
+                    }
+                    val providers = listOf(
+                        LocationManager.GPS_PROVIDER,
+                        LocationManager.NETWORK_PROVIDER,
+                        LocationManager.PASSIVE_PROVIDER
+                    )
+                    @Suppress("MissingPermission")
+                    val best: Location? = providers
+                        .mapNotNull { p ->
+                            try { lm.getLastKnownLocation(p) } catch (_: Exception) { null }
+                        }
+                        .maxByOrNull { it.accuracy * -1 + it.time } // prefer recent + accurate
+                    if (best != null) {
+                        result.success(mapOf("lat" to best.latitude, "lon" to best.longitude))
+                    } else {
+                        result.error("NO_LOCATION", "No last known location available", null)
+                    }
                 }
                 else -> result.notImplemented()
             }
