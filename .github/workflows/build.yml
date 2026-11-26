@@ -65,6 +65,7 @@ jobs:
         run: |
           cd flutter
           flutter pub get
+          dart run flutter_launcher_icons
           flutter build apk --release --android-skip-build-dependency-validation
           mkdir -p ../dist
           cp build/app/outputs/flutter-apk/app-release.apk ../dist/open-dizo-android.apk
@@ -135,10 +136,10 @@ jobs:
           EOF
 
           # Create desktop icon
-          if [ -f "../wallpapers/dizo_wallpaper_240x286.png" ]; then
-            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/open_dizo.png"
-            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/.DirIcon"
-            cp "../wallpapers/dizo_wallpaper_240x286.png" "$APP_DIR/usr/share/icons/hicolor/256x256/apps/open_dizo.png"
+          if [ -f "assets/icon.png" ]; then
+            cp "assets/icon.png" "$APP_DIR/open_dizo.png"
+            cp "assets/icon.png" "$APP_DIR/.DirIcon"
+            cp "assets/icon.png" "$APP_DIR/usr/share/icons/hicolor/256x256/apps/open_dizo.png"
           fi
 
           # Create AppRun launcher
