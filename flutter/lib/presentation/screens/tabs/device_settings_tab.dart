@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/watch_settings.dart';
 import '../../../models/notification_settings.dart';
@@ -17,8 +20,45 @@ class DeviceSettingsTab extends StatefulWidget {
   State<DeviceSettingsTab> createState() => _DeviceSettingsTabState();
 }
 
-class _DeviceSettingsTabState extends State<DeviceSettingsTab> {
+class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindingObserver {
   Timer? _brightnessDebounceTimer;
+  bool _notifAccessGranted = false;
+  bool _phonePermsGranted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshNativePermissions();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshNativePermissions();
+    }
+  }
+
+  Future<void> _refreshNativePermissions() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    final notif = await widget.bleService.isNotificationAccessEnabled();
+    final phone = await widget.bleService.isPhonePermissionGranted();
+    if (mounted) {
+      setState(() {
+        _notifAccessGranted = notif;
+        _phonePermsGranted = phone;
+      });
+    }
+  }
+
+  Future<void> _requestPhonePermissions() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    await [
+      Permission.phone,
+      Permission.contacts,
+    ].request();
+    await _refreshNativePermissions();
+  }
 
   void _onBrightnessChanged(double value) {
     final intLevel = value.round().clamp(1, 5);
@@ -35,6 +75,7 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _brightnessDebounceTimer?.cancel();
     super.dispose();
   }
@@ -241,6 +282,26 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> {
           ),
 
           if (notifs.masterEnabled) ...[
+            if (!kIsWeb && Platform.isAndroid) ...[
+              const SizedBox(height: 12),
+              _buildPermissionPill(
+                title: 'Notification Access',
+                subtitle: _notifAccessGranted
+                    ? 'Listening for WhatsApp, SMS & app alerts'
+                    : 'Required to forward phone notifications',
+                isGranted: _notifAccessGranted,
+                onTap: () => widget.bleService.openNotificationAccessSettings(),
+              ),
+              const SizedBox(height: 8),
+              _buildPermissionPill(
+                title: 'Phone & Call Access',
+                subtitle: _phonePermsGranted
+                    ? 'Listening for incoming calls & caller ID'
+                    : 'Required to show caller name on watch',
+                isGranted: _phonePermsGranted,
+                onTap: _requestPhonePermissions,
+              ),
+            ],
             const Divider(height: 24, color: AppTheme.borderSubtle),
             // Incoming Calls with Test Action
             Row(
@@ -381,6 +442,77 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionPill({
+    required String title,
+    required String subtitle,
+    required bool isGranted,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: isGranted ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isGranted
+              ? AppTheme.success.withValues(alpha: 0.08)
+              : AppTheme.warning.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isGranted
+                ? AppTheme.success.withValues(alpha: 0.3)
+                : AppTheme.warning.withValues(alpha: 0.4),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isGranted ? Icons.check_circle_rounded : Icons.security_rounded,
+              color: isGranted ? AppTheme.success : AppTheme.warning,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: isGranted
+                    ? AppTheme.success.withValues(alpha: 0.18)
+                    : AppTheme.warning,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                isGranted ? 'Active' : 'Enable',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: isGranted ? AppTheme.success : const Color(0xFF0A0C10),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

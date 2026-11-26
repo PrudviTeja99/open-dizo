@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
@@ -57,11 +59,18 @@ class BleService extends ChangeNotifier {
   Timer? _periodicSyncTimer;
   Timer? _healthMeasureTimer;
 
+  static const EventChannel _notifEventChannel =
+      EventChannel('bpt.studiohq.open_dizo/notifications_stream');
+  static const MethodChannel _notifMethodChannel =
+      MethodChannel('bpt.studiohq.open_dizo/notifications');
+  StreamSubscription? _nativeNotifSub;
+
   String? _lastDeviceMac;
   String? _lastDeviceName;
 
   BleService() {
     _loadPersistedData();
+    _initNativeNotificationListener();
   }
 
   // Getters
@@ -1444,11 +1453,110 @@ class BleService extends ChangeNotifier {
     await writeFF02(packet, 'Dismiss Call Alert');
   }
 
+  void _initNativeNotificationListener() {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      _nativeNotifSub = _notifEventChannel.receiveBroadcastStream().listen(
+        (dynamic event) {
+          if (event is Map) {
+            _handleNativeNotificationEvent(Map<String, dynamic>.from(event));
+          }
+        },
+        onError: (e) {
+          debugPrint('[BleService] Native notification stream error: $e');
+        },
+      );
+    } catch (e) {
+      debugPrint('[BleService] Native notification listener unavailable: $e');
+    }
+  }
+
+  void _handleNativeNotificationEvent(Map<String, dynamic> data) {
+    if (!_isConnected || !_notificationSettings.masterEnabled) return;
+    final eventType = data['event'] as String? ?? '';
+
+    if (eventType == 'call_ringing') {
+      if (!_notificationSettings.incomingCalls) return;
+      final caller = data['callerName'] as String? ?? 'Incoming Call';
+      final number = data['phoneNumber'] as String? ?? '';
+      pushIncomingCallAlert(callerName: caller, phoneNumber: number);
+      return;
+    }
+
+    if (eventType == 'call_ended') {
+      if (!_notificationSettings.incomingCalls) return;
+      dismissIncomingCallAlert();
+      return;
+    }
+
+    if (eventType == 'notification') {
+      final pkg = (data['packageName'] as String? ?? '').toLowerCase();
+      final title = data['title'] as String? ?? '';
+      final body = data['body'] as String? ?? '';
+
+      final resolvedType = _mapPackageToNotificationType(pkg);
+      if (resolvedType == null) return;
+
+      sendNotification(type: resolvedType, title: title, body: body);
+    }
+  }
+
+  int? _mapPackageToNotificationType(String pkg) {
+    if (pkg.contains('whatsapp')) {
+      return _notificationSettings.whatsapp ? 12 : null;
+    }
+    if (pkg.contains('telegram')) {
+      return _notificationSettings.telegram ? 18 : null;
+    }
+    if (pkg.contains('messaging') || pkg.contains('mms') || pkg.contains('sms')) {
+      return _notificationSettings.sms ? 4 : null;
+    }
+    if (pkg.contains('gm') || pkg.contains('mail') || pkg.contains('outlook')) {
+      return _notificationSettings.email ? 17 : null;
+    }
+    if (pkg.contains('instagram')) {
+      return _notificationSettings.instagram ? 10 : null;
+    }
+    if (pkg.contains('twitter')) {
+      return _notificationSettings.twitter ? 8 : null;
+    }
+    if (pkg.contains('dialer') || pkg.contains('telecom') || pkg.contains('incallui')) {
+      return null;
+    }
+    return _notificationSettings.others ? 0xFF : null;
+  }
+
+  Future<bool> isNotificationAccessEnabled() async {
+    if (kIsWeb || !Platform.isAndroid) return false;
+    try {
+      return await _notifMethodChannel.invokeMethod<bool>('isNotificationAccessEnabled') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> openNotificationAccessSettings() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      await _notifMethodChannel.invokeMethod('openNotificationAccessSettings');
+    } catch (_) {}
+  }
+
+  Future<bool> isPhonePermissionGranted() async {
+    if (kIsWeb || !Platform.isAndroid) return false;
+    try {
+      return await _notifMethodChannel.invokeMethod<bool>('isPhonePermissionGranted') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static String _hex(List<int> bytes) =>
       bytes.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
 
   @override
   void dispose() {
+    _nativeNotifSub?.cancel();
     _periodicSyncTimer?.cancel();
     _healthMeasureTimer?.cancel();
     for (final sub in _subscriptions) {
