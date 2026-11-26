@@ -17,8 +17,13 @@ import 'image_adjust_screen.dart';
 
 class DialStudioScreen extends StatefulWidget {
   final BleService bleService;
+  final bool isEmbedded;
 
-  const DialStudioScreen({super.key, required this.bleService});
+  const DialStudioScreen({
+    super.key,
+    required this.bleService,
+    this.isEmbedded = false,
+  });
 
   @override
   State<DialStudioScreen> createState() => _DialStudioScreenState();
@@ -315,11 +320,14 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
         _selectedWallpaper != null ? File(_selectedWallpaper!.filePath) : null;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Watch Face Studio', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('Watch Face Studio',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+            ),
       body: SafeArea(
         child: Column(
           children: [

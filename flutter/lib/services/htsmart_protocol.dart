@@ -1,4 +1,7 @@
+import 'dart:convert';
 import '../core/utils/crc16.dart';
+import '../models/watch_alarm.dart';
+import '../models/notification_settings.dart';
 
 /// HTSmart / Realtek BLE packet serializer and framing utility
 /// Implemented according to clean companion app specifications.
@@ -535,5 +538,150 @@ class HtsmartProtocol {
       macSum = 0xCC + 0xEA + 0xFF + 0xAA + 0x42 + 0x7F; // 1056
     }
     return ((randomVal % 10000) + macSum) % 1000000;
+  }
+
+  // ==========================================
+  // Alarms (Cmd 0x02, Key 0x02)
+  // ==========================================
+
+  /// Builds a Set Watch Alarms packet (Cmd 0x02, Key 0x02)
+  static List<int> buildSetAlarmsPacket(List<WatchAlarm> alarms, {int seq = 1}) {
+    final payload = <int>[];
+    for (final alarm in alarms) {
+      payload.addAll(alarm.toHtsmartBytes());
+    }
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x02,
+      payload: payload,
+      seq: seq,
+    );
+  }
+
+  /// Builds an Alarm List Query packet (Cmd 0x02, Key 0x02)
+  static List<int> buildAlarmQueryPacket({int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x02,
+      payload: const [],
+      seq: seq,
+    );
+  }
+
+  /// Parses alarm list from watch response packet payload
+  static List<WatchAlarm> parseAlarmList(List<int> payload) {
+    final alarms = <WatchAlarm>[];
+    int offset = 0;
+    while (offset < payload.length) {
+      if (payload.length < offset + 6) break;
+      final itemLen = payload[offset] & 0xFF;
+      if (itemLen < 5) break;
+      final alarm = WatchAlarm.fromHtsmartBytes(payload, offset);
+      if (alarm != null) {
+        alarms.add(alarm);
+      }
+      offset += (1 + itemLen);
+    }
+    return alarms;
+  }
+
+  // ==========================================
+  // Notifications & Calls (Cmd 0x02 Key 0x12 & Cmd 0x04)
+  // ==========================================
+
+  /// Builds Notification Configuration packet (Cmd 0x02, Key 0x12)
+  static List<int> buildNotificationConfigPacket(NotificationSettings settings, {int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x12, // 18
+      payload: settings.toConfigBytes(),
+      seq: seq,
+    );
+  }
+
+  /// Builds Notification Configuration Query packet (Cmd 0x02, Key 0x12)
+  static List<int> buildNotificationConfigQueryPacket({int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x12,
+      payload: const [],
+      seq: seq,
+    );
+  }
+
+  /// Builds an App Notification Push packet (Cmd 0x04, Key = type)
+  /// Types: 1=Phone coming, 2=Phone answered, 3=Phone reject, 4=SMS, 12=WhatsApp, 18=Telegram, 0xFF=Others
+  static List<int> buildNotificationPushPacket({
+    required int type,
+    required String name,
+    required String content,
+    bool useExtendedFormat = true,
+    int seq = 1,
+  }) {
+    final nameBytes = utf8.encode(name);
+    final contentBytes = utf8.encode(content);
+    final List<int> keyData;
+
+    if (useExtendedFormat) {
+      final nameLen = nameBytes.length.clamp(0, 64);
+      final maxContent = 240 - nameLen;
+      final contentLen = contentBytes.length.clamp(0, maxContent);
+
+      keyData = List<int>.filled(nameLen + 3 + contentLen, 0);
+      keyData[0] = nameLen & 0xFF;
+      for (int i = 0; i < nameLen; i++) {
+        keyData[1 + i] = nameBytes[i];
+      }
+      keyData[nameLen + 1] = (contentLen >> 8) & 0xFF;
+      keyData[nameLen + 2] = contentLen & 0xFF;
+      for (int i = 0; i < contentLen; i++) {
+        keyData[nameLen + 3 + i] = contentBytes[i];
+      }
+    } else {
+      // Legacy fixed 20-byte name layout
+      final contentLen = contentBytes.length.clamp(0, 220);
+      keyData = List<int>.filled(22 + contentLen, 0x20); // Pad with spaces
+
+      final copyNameLen = nameBytes.length.clamp(0, 20);
+      for (int i = 0; i < copyNameLen; i++) {
+        keyData[i] = nameBytes[i];
+      }
+      keyData[20] = (contentLen >> 8) & 0xFF;
+      keyData[21] = contentLen & 0xFF;
+      for (int i = 0; i < contentLen; i++) {
+        keyData[22 + i] = contentBytes[i];
+      }
+    }
+
+    return buildPacket(
+      cmdId: 0x04,
+      keyId: type & 0xFF,
+      payload: keyData,
+      seq: seq,
+    );
+  }
+
+  /// Pushes an incoming call notification to the watch (Cmd 0x04, Key 0x01)
+  static List<int> buildIncomingCallPacket({
+    required String callerName,
+    required String phoneNumber,
+    int seq = 1,
+  }) {
+    return buildNotificationPushPacket(
+      type: 0x01, // TYPE_TELEPHONE_COMING
+      name: callerName.isNotEmpty ? callerName : phoneNumber,
+      content: phoneNumber.isNotEmpty ? phoneNumber : 'Incoming Call',
+      seq: seq,
+    );
+  }
+
+  /// Sends a call ended / rejected packet to dismiss incoming call alert on the watch (Cmd 0x04, Key 0x03)
+  static List<int> buildEndCallPacket({int seq = 1}) {
+    return buildNotificationPushPacket(
+      type: 0x03, // TYPE_TELEPHONE_REJECT
+      name: '',
+      content: '',
+      seq: seq,
+    );
   }
 }

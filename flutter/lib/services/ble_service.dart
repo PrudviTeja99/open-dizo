@@ -12,6 +12,9 @@ import '../models/discovered_device.dart';
 import '../models/log_entry.dart';
 import '../models/watch_telemetry.dart';
 import '../models/watch_settings.dart';
+import '../models/watch_alarm.dart';
+import '../models/notification_settings.dart';
+import '../models/historical_health.dart';
 import 'htsmart_protocol.dart';
 
 /// Central BLE Service managing connections, characteristic I/O, telemetry,
@@ -31,6 +34,9 @@ class BleService extends ChangeNotifier {
   WatchTelemetry _telemetry = const WatchTelemetry();
   WatchSettings _settings = const WatchSettings();
   List<int>? _rawBrightnessVibrateConfig;
+  List<WatchAlarm> _alarms = [];
+  NotificationSettings _notificationSettings = const NotificationSettings();
+  List<DailyHealthRecord> _weeklyHistory = [];
 
   // Frame reassembly buffer for incoming multi-packet BLE notification frames
   final List<int> _rxAssemblyBuffer = [];
@@ -67,10 +73,22 @@ class BleService extends ChangeNotifier {
   bool get isMeasuringHealth => _isMeasuringHealth;
   WatchTelemetry get telemetry => _telemetry;
   WatchSettings get settings => _settings;
+  List<WatchAlarm> get alarms => List.unmodifiable(_alarms);
+  NotificationSettings get notificationSettings => _notificationSettings;
+  List<DailyHealthRecord> get weeklyHistory => List.unmodifiable(_weeklyHistory);
   List<LogEntry> get logs => List.unmodifiable(_logs);
   List<DiscoveredDevice> get discoveredDevices => List.unmodifiable(_discoveredDevices);
   String? get lastDeviceMac => _lastDeviceMac;
   String? get lastDeviceName => _lastDeviceName;
+
+  void _updateWeeklyHistory() {
+    _weeklyHistory = DailyHealthRecord.generateTrailingWeek(
+      todaySteps: _telemetry.steps ?? 0,
+      todayCalories: _telemetry.calories ?? 0,
+      todayDistance: (_telemetry.distanceMeters ?? 0.0) / 1000.0,
+      todayHeartRate: _telemetry.heartRate ?? 0,
+    );
+  }
 
   Future<void> _loadPersistedData() async {
     try {
@@ -94,6 +112,20 @@ class BleService extends ChangeNotifier {
           debugPrint('[BleService] Error decoding cached raw brightness: $e');
         }
       }
+      final cachedAlarms = prefs.getString('cached_alarms');
+      if (cachedAlarms != null) {
+        try {
+          final List<dynamic> list = jsonDecode(cachedAlarms);
+          _alarms = list
+              .map((e) => WatchAlarm.fromJson(e as Map<String, dynamic>))
+              .toList();
+        } catch (_) {}
+      }
+      final cachedNotifs = prefs.getString('cached_notification_settings');
+      if (cachedNotifs != null) {
+        _notificationSettings = NotificationSettings.decode(cachedNotifs);
+      }
+      _updateWeeklyHistory();
       notifyListeners();
     } catch (e) {
       debugPrint('[BleService] Error loading persisted data: $e');
@@ -101,6 +133,7 @@ class BleService extends ChangeNotifier {
   }
 
   Future<void> _saveTelemetry() async {
+    _updateWeeklyHistory();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('cached_telemetry', _telemetry.toJson());
@@ -702,6 +735,33 @@ class BleService extends ChangeNotifier {
       writeFF02(HtsmartProtocol.buildSyncAckPacket(success: true, seq: _nextSeq()), 'Sync ACK');
       return;
     }
+
+    // 7. Watch Alarms response: Cmd 0x02, Key 0x02
+    if (cmdId == 0x02 && keyId == 0x02) {
+      if (keyData.isNotEmpty) {
+        final parsed = HtsmartProtocol.parseAlarmList(keyData);
+        if (parsed.isNotEmpty) {
+          _alarms = parsed;
+          notifyListeners();
+          SharedPreferences.getInstance().then((prefs) {
+            prefs.setString('cached_alarms', jsonEncode(_alarms.map((e) => e.toJson()).toList()));
+          });
+          log('Alarms synced: ${_alarms.length} active alarms', type: LogType.success);
+        }
+      }
+      return;
+    }
+
+    // 8. Notification Config response: Cmd 0x02, Key 0x12
+    if (cmdId == 0x02 && keyId == 0x12 && keyData.length >= 4) {
+      _notificationSettings = NotificationSettings.fromConfigBytes(keyData);
+      notifyListeners();
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString('cached_notification_settings', _notificationSettings.encode());
+      });
+      log('Notification configuration synced', type: LogType.success);
+      return;
+    }
   }
 
   void _decodeLegacyTelemetry(List<int> data) {
@@ -949,6 +1009,14 @@ class BleService extends ChangeNotifier {
       // 5. Watch configuration query (Brightness, Reminders, Preferences)
       await queryWatchConfig();
       await Future.delayed(const Duration(milliseconds: 200));
+
+      // 6. Watch alarms query
+      await queryAlarms();
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // 7. Notification config query
+      await queryNotificationConfig();
+      await Future.delayed(const Duration(milliseconds: 150));
 
       _telemetry = _telemetry.copyWith(lastSyncTime: DateTime.now());
       await _saveTelemetry();
@@ -1261,6 +1329,119 @@ class BleService extends ChangeNotifier {
     log('Switching active dial to slot #$dialPosition...');
     final packet = HtsmartProtocol.buildSwitchDialPacket(dialPosition);
     await writeFF02(packet, 'Switch Dial (#$dialPosition)');
+  }
+
+  // ==========================================
+  // Alarms Management (Cmd 0x02, Key 0x02)
+  // ==========================================
+
+  Future<void> queryAlarms() async {
+    if (!_isConnected) return;
+    final packet = HtsmartProtocol.buildAlarmQueryPacket(seq: _nextSeq());
+    await writeFF02(packet, 'Query Alarms');
+  }
+
+  Future<void> setAlarms(List<WatchAlarm> newAlarms) async {
+    _alarms = List.from(newAlarms);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          'cached_alarms', jsonEncode(_alarms.map((e) => e.toJson()).toList()));
+    } catch (_) {}
+
+    if (_isConnected) {
+      final packet =
+          HtsmartProtocol.buildSetAlarmsPacket(_alarms, seq: _nextSeq());
+      await writeFF02(packet, 'Set Alarms (${_alarms.length} alarms)');
+    }
+  }
+
+  Future<void> addOrUpdateAlarm(WatchAlarm alarm) async {
+    final list = List<WatchAlarm>.from(_alarms);
+    final idx = list.indexWhere((a) => a.id == alarm.id);
+    if (idx >= 0) {
+      list[idx] = alarm;
+    } else {
+      list.add(alarm);
+    }
+    await setAlarms(list);
+  }
+
+  Future<void> deleteAlarm(int id) async {
+    final list = List<WatchAlarm>.from(_alarms)..removeWhere((a) => a.id == id);
+    await setAlarms(list);
+  }
+
+  Future<void> toggleAlarm(int id, bool enable) async {
+    final list = List<WatchAlarm>.from(_alarms);
+    final idx = list.indexWhere((a) => a.id == id);
+    if (idx >= 0) {
+      list[idx] = list[idx].copyWith(isEnabled: enable);
+      await setAlarms(list);
+    }
+  }
+
+  // ==========================================
+  // Notifications & Calls (Cmd 0x02 Key 0x12 & Cmd 0x04)
+  // ==========================================
+
+  Future<void> queryNotificationConfig() async {
+    if (!_isConnected) return;
+    final packet =
+        HtsmartProtocol.buildNotificationConfigQueryPacket(seq: _nextSeq());
+    await writeFF02(packet, 'Query Notification Config');
+  }
+
+  Future<void> updateNotificationSettings(NotificationSettings newSettings) async {
+    _notificationSettings = newSettings;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          'cached_notification_settings', _notificationSettings.encode());
+    } catch (_) {}
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildNotificationConfigPacket(
+          _notificationSettings,
+          seq: _nextSeq());
+      await writeFF02(packet, 'Update Notification Config');
+    }
+  }
+
+  Future<void> sendNotification({
+    required int type,
+    required String title,
+    required String body,
+  }) async {
+    if (!_isConnected) return;
+    final packet = HtsmartProtocol.buildNotificationPushPacket(
+      type: type,
+      name: title,
+      content: body,
+      seq: _nextSeq(),
+    );
+    await writeFF02(packet, 'Push Notification ($title)');
+  }
+
+  Future<void> pushIncomingCallAlert({
+    required String callerName,
+    required String phoneNumber,
+  }) async {
+    if (!_isConnected) return;
+    final packet = HtsmartProtocol.buildIncomingCallPacket(
+      callerName: callerName,
+      phoneNumber: phoneNumber,
+      seq: _nextSeq(),
+    );
+    await writeFF02(packet, 'Incoming Call Alert ($callerName)');
+  }
+
+  Future<void> dismissIncomingCallAlert() async {
+    if (!_isConnected) return;
+    final packet = HtsmartProtocol.buildEndCallPacket(seq: _nextSeq());
+    await writeFF02(packet, 'Dismiss Call Alert');
   }
 
   static String _hex(List<int> bytes) =>
