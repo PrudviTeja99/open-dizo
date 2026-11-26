@@ -134,13 +134,60 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: IndexedStack(
-          index: _currentIndex,
+        child: Column(
           children: [
-            HealthTab(bleService: _bleService),
-            DialStudioScreen(bleService: _bleService, isEmbedded: true),
-            RemindersTab(bleService: _bleService),
-            DeviceSettingsTab(bleService: _bleService),
+            if (_bleService.isFindingPhone)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.heartRate.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.heartRate, width: 1.5),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.ring_volume_rounded, color: AppTheme.heartRate, size: 22),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Watch is Finding Your Phone',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                          ),
+                          Text(
+                            'Tap Stop to silence ringtone & vibration',
+                            style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.heartRate,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () => _bleService.stopFindPhoneAlert(),
+                      child: const Text('Stop', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  HealthTab(bleService: _bleService),
+                  DialStudioScreen(bleService: _bleService, isEmbedded: true),
+                  RemindersTab(bleService: _bleService),
+                  DeviceSettingsTab(bleService: _bleService),
+                ],
+              ),
+            ),
           ],
         ),
       ),

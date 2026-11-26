@@ -3,6 +3,7 @@ import 'package:open_dizo/models/watch_alarm.dart';
 import 'package:open_dizo/models/notification_settings.dart';
 import 'package:open_dizo/models/historical_health.dart';
 import 'package:open_dizo/services/htsmart_protocol.dart';
+import 'package:open_dizo/services/weather_service.dart';
 
 void main() {
   group('WatchAlarm Tests', () {
@@ -144,6 +145,40 @@ void main() {
       expect(history.last.steps, equals(8500));
       expect(history.last.caloriesKcal, equals(320));
       expect(history.last.avgHeartRate, equals(74));
+    });
+  });
+
+  group('Weather & Find Phone Tests', () {
+    test('Maps WMO weather codes to HTSmart watch codes', () {
+      expect(WeatherService.mapWmoToWatchCode(0), equals(1)); // Sunny
+      expect(WeatherService.mapWmoToWatchCode(2), equals(2)); // Partly Cloudy
+      expect(WeatherService.mapWmoToWatchCode(3), equals(3)); // Overcast
+      expect(WeatherService.mapWmoToWatchCode(61), equals(4)); // Rain
+      expect(WeatherService.mapWmoToWatchCode(73), equals(5)); // Snow
+      expect(WeatherService.mapWmoToWatchCode(95), equals(6)); // Thunderstorm
+    });
+
+    test('Weather packet generation complies with Cmd 0x02 Key 0x36', () {
+      final packet = HtsmartProtocol.buildWeatherPacket(
+        city: 'Bengaluru',
+        currentTempC: 26,
+        lowTempC: 19,
+        highTempC: 29,
+        weatherCode: 1,
+        forecasts: [
+          (low: 20, high: 30, code: 2),
+          (low: 19, high: 28, code: 4),
+        ],
+      );
+      expect(packet.length, greaterThan(20));
+      expect(packet[8], equals(0x02)); // Cmd 0x02
+      expect(packet[10], equals(0x36)); // Key 0x36 (54)
+    });
+
+    test('Stop Find Phone packet complies with Cmd 0x02 Key 0x98', () {
+      final packet = HtsmartProtocol.buildStopFindPhonePacket();
+      expect(packet[8], equals(0x02));
+      expect(packet[10], equals(0x98));
     });
   });
 }

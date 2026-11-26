@@ -1,9 +1,16 @@
 package bpt.studiohq.open_dizo
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -18,6 +25,7 @@ class MainActivity : FlutterActivity() {
     private val UPDATER_CHANNEL = "bpt.studiohq.open_dizo/updater"
     private val NOTIF_METHOD_CHANNEL = "bpt.studiohq.open_dizo/notifications"
     private val NOTIF_EVENT_CHANNEL = "bpt.studiohq.open_dizo/notifications_stream"
+    private var activeRingtone: Ringtone? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -86,6 +94,14 @@ class MainActivity : FlutterActivity() {
                     ) == PackageManager.PERMISSION_GRANTED
                     result.success(phoneGranted && callLogGranted)
                 }
+                "startFindPhoneRing" -> {
+                    startFindPhoneAlert()
+                    result.success(true)
+                }
+                "stopFindPhoneRing" -> {
+                    stopFindPhoneAlert()
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -102,5 +118,49 @@ class MainActivity : FlutterActivity() {
                 }
             }
         )
+    }
+
+    private fun startFindPhoneAlert() {
+        try {
+            stopFindPhoneAlert()
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            if (uri != null) {
+                activeRingtone = RingtoneManager.getRingtone(applicationContext, uri)?.apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        isLooping = true
+                    }
+                    play()
+                }
+            }
+            val vibrator = getAppVibrator()
+            val pattern = longArrayOf(0, 500, 300, 500, 300)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(pattern, 0)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun stopFindPhoneAlert() {
+        try {
+            activeRingtone?.stop()
+            activeRingtone = null
+            getAppVibrator()?.cancel()
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun getAppVibrator(): Vibrator? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+            vm?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
     }
 }

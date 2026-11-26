@@ -684,4 +684,79 @@ class HtsmartProtocol {
       seq: seq,
     );
   }
+
+  // ==========================================
+  // Weather & Find Phone (Cmd 0x02)
+  // ==========================================
+
+  /// Builds a Weather + Multi-Day Forecast sync packet (Cmd 0x02, Key 0x36 / 54)
+  /// Forecasts: list of maps/records with {low, high, code}
+  static List<int> buildWeatherPacket({
+    required String city,
+    required int currentTempC,
+    required int lowTempC,
+    required int highTempC,
+    required int weatherCode,
+    int pressureHpa = 1013,
+    int windForce = 2,
+    int visibilityKm = 10,
+    List<({int low, int high, int code})> forecasts = const [],
+    DateTime? timestamp,
+    int seq = 1,
+  }) {
+    final cityBytes = utf8.encode(city);
+    final cityLen = cityBytes.length.clamp(0, 64);
+    final dt = timestamp ?? DateTime.now();
+
+    final yearVal = (dt.year - 2000).clamp(0, 127);
+    final b0 = ((yearVal << 2) | (dt.month >> 2)) & 0xFF;
+    final b1 = ((dt.month << 6) | (dt.day << 1) | (dt.hour >> 4)) & 0xFF;
+    final b2 = ((dt.hour << 4) | (dt.minute >> 2)) & 0xFF;
+    final b3 = ((dt.minute << 6) | dt.second) & 0xFF;
+
+    final forecastCount = forecasts.length.clamp(0, 7);
+    final payload = <int>[
+      currentTempC & 0xFF,
+      lowTempC & 0xFF,
+      highTempC & 0xFF,
+      weatherCode & 0xFF,
+      cityLen & 0xFF,
+      ...cityBytes.take(cityLen),
+      b0, b1, b2, b3,
+      forecastCount & 0xFF,
+    ];
+
+    for (int i = 0; i < forecastCount; i++) {
+      payload.add(forecasts[i].low & 0xFF);
+      payload.add(forecasts[i].high & 0xFF);
+      payload.add(forecasts[i].code & 0xFF);
+    }
+
+    // 4-byte pressure (Big Endian) + windForce + visibility
+    payload.addAll([
+      (pressureHpa >> 24) & 0xFF,
+      (pressureHpa >> 16) & 0xFF,
+      (pressureHpa >> 8) & 0xFF,
+      pressureHpa & 0xFF,
+      windForce & 0xFF,
+      visibilityKm & 0xFF,
+    ]);
+
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x36, // 54
+      payload: payload,
+      seq: seq,
+    );
+  }
+
+  /// Builds a Stop Find Phone acknowledgement packet (Cmd 0x02, Key 0x98)
+  static List<int> buildStopFindPhonePacket({int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x98,
+      payload: const [],
+      seq: seq,
+    );
+  }
 }

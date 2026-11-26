@@ -107,13 +107,25 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
         _buildDisplayGesturesCard(settings),
         const SizedBox(height: 20),
 
-        // 4. Time & System Preferences
+        // 4. Live Weather Sync
+        _buildSectionHeader('Weather Sync', 'Push live forecast to watch Weather app'),
+        const SizedBox(height: 12),
+        _buildWeatherCard(settings, isConnected),
+        const SizedBox(height: 20),
+
+        // 5. Fitness Goals & Body Profile
+        _buildSectionHeader('Fitness Goals & Profile', 'Calibrates stride length & calorie burn'),
+        const SizedBox(height: 12),
+        _buildGoalsProfileCard(settings),
+        const SizedBox(height: 20),
+
+        // 6. Time & System Preferences
         _buildSectionHeader('Preferences & Units', 'Format and measurement system'),
         const SizedBox(height: 12),
         _buildPreferencesCard(settings),
         const SizedBox(height: 20),
 
-        // 5. System Tools & Maintenance
+        // 7. System Tools & Maintenance
         _buildSectionHeader('System & Diagnostics', 'Firmware, updates, and device management'),
         const SizedBox(height: 12),
         _buildMaintenanceCard(isConnected),
@@ -803,5 +815,355 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
     if (confirm == true) {
       widget.bleService.resetWatch();
     }
+  }
+
+  Widget _buildWeatherCard(WatchSettings settings, bool isConnected) {
+    final weather = widget.bleService.weather;
+    final isSyncing = widget.bleService.isSyncingWeather;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppTheme.spo2.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.wb_sunny_rounded, color: AppTheme.spo2, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        weather != null
+                            ? '${weather.city} · ${weather.currentTempC}°C'
+                            : settings.weatherCity,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                      ),
+                      Text(
+                        weather != null
+                            ? '${weather.conditionLabel} · H:${weather.highTempC}° L:${weather.lowTempC}°'
+                            : 'Tap Sync to fetch live forecast',
+                        style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              IconButton(
+                tooltip: 'Change City',
+                icon: const Icon(Icons.edit_location_alt_rounded, color: AppTheme.textSecondary, size: 20),
+                onPressed: () => _showCityDialog(settings.weatherCity),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.surfaceLight,
+                foregroundColor: AppTheme.accent,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: isSyncing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
+                    )
+                  : const Icon(Icons.cloud_sync_rounded, size: 18),
+              label: Text(
+                isSyncing ? 'Fetching Forecast...' : (isConnected ? 'Sync Weather to Watch' : 'Preview Weather'),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              onPressed: isSyncing
+                  ? null
+                  : () async {
+                      try {
+                        final snap = await widget.bleService.syncWeather();
+                        if (mounted && snap != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Weather synced: ${snap.city} ${snap.currentTempC}°C (${snap.conditionLabel})'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Weather error: $e'), backgroundColor: AppTheme.heartRate),
+                          );
+                        }
+                      }
+                    },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGoalsProfileCard(WatchSettings settings) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.steps.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.flag_rounded, color: AppTheme.steps, size: 20),
+            ),
+            title: const Text('Daily Fitness Targets', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              '${settings.targetSteps} steps · ${settings.targetCalories} kcal · ${(settings.targetDistanceMeters / 1000).toStringAsFixed(1)} km',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+            onTap: () => _showGoalsDialog(settings),
+          ),
+          const Divider(height: 16, color: AppTheme.borderSubtle),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.calories.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.person_rounded, color: AppTheme.calories, size: 20),
+            ),
+            title: const Text('Body Profile', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              '${settings.isMale ? "Male" : "Female"} · ${settings.age} yrs · ${settings.heightCm.round()} cm · ${settings.weightKg.round()} kg',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+            onTap: () => _showProfileDialog(settings),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCityDialog(String currentCity) async {
+    final ctrl = TextEditingController(text: currentCity);
+    final newCity = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Weather City'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter city name (e.g. Bengaluru, London)',
+          ),
+        ),
+        actions: [
+          TextButton(child: const Text('Cancel'), onPressed: () => Navigator.pop(ctx)),
+          ElevatedButton(
+            child: const Text('Save & Sync'),
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+          ),
+        ],
+      ),
+    );
+    if (newCity != null && newCity.isNotEmpty) {
+      try {
+        await widget.bleService.syncWeather(city: newCity);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not fetch weather for "$newCity": $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showGoalsDialog(WatchSettings settings) async {
+    int steps = settings.targetSteps;
+    int calories = settings.targetCalories;
+    double distKm = settings.targetDistanceMeters / 1000.0;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Daily Fitness Targets', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 16),
+              Text('Steps Goal: $steps', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Slider(
+                value: steps.toDouble().clamp(2000, 30000),
+                min: 2000,
+                max: 30000,
+                divisions: 28,
+                activeColor: AppTheme.steps,
+                onChanged: (v) => setModalState(() => steps = v.round()),
+              ),
+              Text('Calorie Burn Goal: $calories kcal', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Slider(
+                value: calories.toDouble().clamp(100, 1500),
+                min: 100,
+                max: 1500,
+                divisions: 28,
+                activeColor: AppTheme.calories,
+                onChanged: (v) => setModalState(() => calories = v.round()),
+              ),
+              Text('Distance Goal: ${distKm.toStringAsFixed(1)} km', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Slider(
+                value: distKm.clamp(1.0, 20.0),
+                min: 1.0,
+                max: 20.0,
+                divisions: 38,
+                activeColor: AppTheme.accent,
+                onChanged: (v) => setModalState(() => distKm = v),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    widget.bleService.updateExerciseTargets(
+                      steps: steps,
+                      distanceMeters: (distKm * 1000).round(),
+                      calories: calories,
+                    );
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Save & Sync to Watch'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showProfileDialog(WatchSettings settings) async {
+    bool isMale = settings.isMale;
+    int age = settings.age;
+    double heightCm = settings.heightCm;
+    double weightKg = settings.weightKg;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Body Profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('Male'),
+                    selected: isMale,
+                    selectedColor: AppTheme.accent,
+                    labelStyle: TextStyle(color: isMale ? const Color(0xFF0A0C10) : AppTheme.textSecondary),
+                    onSelected: (_) => setModalState(() => isMale = true),
+                  ),
+                  const SizedBox(width: 10),
+                  ChoiceChip(
+                    label: const Text('Female'),
+                    selected: !isMale,
+                    selectedColor: AppTheme.accent,
+                    labelStyle: TextStyle(color: !isMale ? const Color(0xFF0A0C10) : AppTheme.textSecondary),
+                    onSelected: (_) => setModalState(() => isMale = false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text('Age: $age yrs', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Slider(
+                value: age.toDouble().clamp(10, 90),
+                min: 10,
+                max: 90,
+                divisions: 80,
+                activeColor: AppTheme.accent,
+                onChanged: (v) => setModalState(() => age = v.round()),
+              ),
+              Text('Height: ${heightCm.round()} cm', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Slider(
+                value: heightCm.clamp(120, 220),
+                min: 120,
+                max: 220,
+                divisions: 100,
+                activeColor: AppTheme.accent,
+                onChanged: (v) => setModalState(() => heightCm = v),
+              ),
+              Text('Weight: ${weightKg.round()} kg', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Slider(
+                value: weightKg.clamp(30, 160),
+                min: 30,
+                max: 160,
+                divisions: 130,
+                activeColor: AppTheme.accent,
+                onChanged: (v) => setModalState(() => weightKg = v),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    widget.bleService.updateUserProfile(
+                      isMale: isMale,
+                      age: age,
+                      heightCm: heightCm,
+                      weightKg: weightKg,
+                    );
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Save & Sync to Watch'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -18,6 +18,7 @@ import '../models/watch_alarm.dart';
 import '../models/notification_settings.dart';
 import '../models/historical_health.dart';
 import 'htsmart_protocol.dart';
+import 'weather_service.dart';
 
 /// Central BLE Service managing connections, characteristic I/O, telemetry,
 /// and complete watch options/settings according to clean protocol specifications.
@@ -39,6 +40,9 @@ class BleService extends ChangeNotifier {
   List<WatchAlarm> _alarms = [];
   NotificationSettings _notificationSettings = const NotificationSettings();
   List<DailyHealthRecord> _weeklyHistory = [];
+  WeatherSnapshot? _weather;
+  bool _isSyncingWeather = false;
+  bool _isFindingPhone = false;
 
   // Frame reassembly buffer for incoming multi-packet BLE notification frames
   final List<int> _rxAssemblyBuffer = [];
@@ -85,6 +89,9 @@ class BleService extends ChangeNotifier {
   List<WatchAlarm> get alarms => List.unmodifiable(_alarms);
   NotificationSettings get notificationSettings => _notificationSettings;
   List<DailyHealthRecord> get weeklyHistory => List.unmodifiable(_weeklyHistory);
+  WeatherSnapshot? get weather => _weather;
+  bool get isSyncingWeather => _isSyncingWeather;
+  bool get isFindingPhone => _isFindingPhone;
   List<LogEntry> get logs => List.unmodifiable(_logs);
   List<DiscoveredDevice> get discoveredDevices => List.unmodifiable(_discoveredDevices);
   String? get lastDeviceMac => _lastDeviceMac;
@@ -769,6 +776,18 @@ class BleService extends ChangeNotifier {
         prefs.setString('cached_notification_settings', _notificationSettings.encode());
       });
       log('Notification configuration synced', type: LogType.success);
+      return;
+    }
+
+    // 9. Watch triggered Find My Phone: Cmd 0x02, Key 0x3C (60)
+    if (cmdId == 0x02 && keyId == 0x3C) {
+      _startFindPhoneAlert();
+      return;
+    }
+
+    // 10. Watch stopped Find My Phone: Cmd 0x02, Key 0x7C (124)
+    if (cmdId == 0x02 && keyId == 0x7C) {
+      stopFindPhoneAlert(sendAck: false);
       return;
     }
   }
@@ -1548,6 +1567,128 @@ class BleService extends ChangeNotifier {
       return await _notifMethodChannel.invokeMethod<bool>('isPhonePermissionGranted') ?? false;
     } catch (_) {
       return false;
+    }
+  }
+
+  // ==========================================
+  // Weather Sync, Find My Phone & Goals/Profile
+  // ==========================================
+
+  Future<WeatherSnapshot?> syncWeather({String? city}) async {
+    final targetCity = (city ?? _settings.weatherCity).trim();
+    if (targetCity.isEmpty) return null;
+
+    if (targetCity != _settings.weatherCity) {
+      _settings = _settings.copyWith(weatherCity: targetCity);
+      await _saveSettings();
+    }
+
+    _isSyncingWeather = true;
+    notifyListeners();
+    try {
+      final snapshot = await WeatherService.fetchWeatherForCity(targetCity);
+      _weather = snapshot;
+      notifyListeners();
+
+      if (_isConnected) {
+        final packet = HtsmartProtocol.buildWeatherPacket(
+          city: snapshot.city,
+          currentTempC: snapshot.currentTempC,
+          lowTempC: snapshot.lowTempC,
+          highTempC: snapshot.highTempC,
+          weatherCode: snapshot.watchWeatherCode,
+          pressureHpa: snapshot.pressureHpa,
+          forecasts: snapshot.forecasts
+              .map((f) => (low: f.lowTempC, high: f.highTempC, code: f.watchWeatherCode))
+              .toList(),
+          seq: _nextSeq(),
+        );
+        await writeFF02(packet, 'Sync Weather (${snapshot.city} ${snapshot.currentTempC}°C)');
+      }
+      return snapshot;
+    } catch (e) {
+      log('Weather sync failed: $e', type: LogType.error);
+      rethrow;
+    } finally {
+      _isSyncingWeather = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _startFindPhoneAlert() async {
+    _isFindingPhone = true;
+    notifyListeners();
+    log('Watch requested Find My Phone!', type: LogType.info);
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        await _notifMethodChannel.invokeMethod('startFindPhoneRing');
+      } catch (_) {}
+    }
+  }
+
+  Future<void> stopFindPhoneAlert({bool sendAck = true}) async {
+    _isFindingPhone = false;
+    notifyListeners();
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        await _notifMethodChannel.invokeMethod('stopFindPhoneRing');
+      } catch (_) {}
+    }
+    if (sendAck && _isConnected) {
+      final packet = HtsmartProtocol.buildStopFindPhonePacket(seq: _nextSeq());
+      await writeFF02(packet, 'Stop Find Phone');
+    }
+  }
+
+  Future<void> updateExerciseTargets({
+    required int steps,
+    required int distanceMeters,
+    required int calories,
+  }) async {
+    _settings = _settings.copyWith(
+      targetSteps: steps,
+      targetDistanceMeters: distanceMeters,
+      targetCalories: calories,
+    );
+    _updateWeeklyHistory();
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildExerciseTargetPacket(
+        steps: steps,
+        distanceMeters: distanceMeters,
+        calories: calories,
+        seq: _nextSeq(),
+      );
+      await writeFF02(packet, 'Update Fitness Goals');
+    }
+  }
+
+  Future<void> updateUserProfile({
+    required bool isMale,
+    required int age,
+    required double heightCm,
+    required double weightKg,
+  }) async {
+    _settings = _settings.copyWith(
+      isMale: isMale,
+      age: age,
+      heightCm: heightCm,
+      weightKg: weightKg,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildUserInfoPacket(
+        isMale: isMale,
+        age: age,
+        heightCm: heightCm,
+        weightKg: weightKg,
+        seq: _nextSeq(),
+      );
+      await writeFF02(packet, 'Update Body Profile');
     }
   }
 

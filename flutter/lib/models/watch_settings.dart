@@ -48,6 +48,13 @@ class WatchSettings {
   final int targetDistanceMeters;
   final int targetCalories;
 
+  // User Body Profile & Weather City
+  final bool isMale;
+  final int age;
+  final double heightCm;
+  final double weightKg;
+  final String weatherCity;
+
   const WatchSettings({
     this.brightness = 3,
     this.screenTimeoutSeconds = 5,
@@ -82,6 +89,11 @@ class WatchSettings {
     this.targetSteps = 10000,
     this.targetDistanceMeters = 5000,
     this.targetCalories = 300,
+    this.isMale = true,
+    this.age = 25,
+    this.heightCm = 175.0,
+    this.weightKg = 70.0,
+    this.weatherCity = 'Bengaluru',
   });
 
   WatchSettings copyWith({
@@ -118,6 +130,11 @@ class WatchSettings {
     int? targetSteps,
     int? targetDistanceMeters,
     int? targetCalories,
+    bool? isMale,
+    int? age,
+    double? heightCm,
+    double? weightKg,
+    String? weatherCity,
   }) {
     return WatchSettings(
       brightness: brightness ?? this.brightness,
@@ -153,6 +170,11 @@ class WatchSettings {
       targetSteps: targetSteps ?? this.targetSteps,
       targetDistanceMeters: targetDistanceMeters ?? this.targetDistanceMeters,
       targetCalories: targetCalories ?? this.targetCalories,
+      isMale: isMale ?? this.isMale,
+      age: age ?? this.age,
+      heightCm: heightCm ?? this.heightCm,
+      weightKg: weightKg ?? this.weightKg,
+      weatherCity: weatherCity ?? this.weatherCity,
     );
   }
 
@@ -191,6 +213,11 @@ class WatchSettings {
       'targetSteps': targetSteps,
       'targetDistanceMeters': targetDistanceMeters,
       'targetCalories': targetCalories,
+      'isMale': isMale,
+      'age': age,
+      'heightCm': heightCm,
+      'weightKg': weightKg,
+      'weatherCity': weatherCity,
     };
   }
 
@@ -229,6 +256,11 @@ class WatchSettings {
       targetSteps: map['targetSteps'] as int? ?? 10000,
       targetDistanceMeters: map['targetDistanceMeters'] as int? ?? 5000,
       targetCalories: map['targetCalories'] as int? ?? 300,
+      isMale: map['isMale'] as bool? ?? true,
+      age: map['age'] as int? ?? 25,
+      heightCm: (map['heightCm'] as num?)?.toDouble() ?? 175.0,
+      weightKg: (map['weightKg'] as num?)?.toDouble() ?? 70.0,
+      weatherCity: map['weatherCity'] as String? ?? 'Bengaluru',
     );
   }
 
