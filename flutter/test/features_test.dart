@@ -246,4 +246,47 @@ void main() {
       expect(spo2Days[DateTime(2026, 11, 26)], equals(98));
     });
   });
+
+  group('Music Sync & Health Warning Thresholds Tests', () {
+    test('Music info & state packets comply with Cmd 0x02 Key 0x94 & 0x93', () {
+      final infoPkt = HtsmartProtocol.buildMusicInfoPacket(
+        title: 'Starboy',
+        artist: 'The Weeknd',
+        durationMs: 230000,
+      );
+      expect(infoPkt[8], equals(0x02));
+      expect(infoPkt[10], equals(0x94));
+
+      final statePkt = HtsmartProtocol.buildMusicStatePacket(
+        isPlaying: true,
+        positionMs: 45000,
+      );
+      expect(statePkt[8], equals(0x02));
+      expect(statePkt[10], equals(0x93));
+      expect(statePkt[13], equals(1)); // 1 = Playing
+    });
+
+    test('Heart Rate & Blood Pressure warning packets comply with Key 0x46 & 0x49', () {
+      final hrWarn = HtsmartProtocol.buildWarnHeartRatePacket(
+        staticEnable: true,
+        staticBpm: 120,
+        dynamicEnable: true,
+        dynamicBpm: 175,
+      );
+      expect(hrWarn[8], equals(0x02));
+      expect(hrWarn[10], equals(0x46));
+      expect(hrWarn.sublist(13), equals([1, 120, 1, 175]));
+
+      final bpWarn = HtsmartProtocol.buildWarnBloodPressurePacket(
+        enable: true,
+        sbpUpper: 145,
+        sbpLower: 90,
+        dbpUpper: 95,
+        dbpLower: 60,
+      );
+      expect(bpWarn[8], equals(0x02));
+      expect(bpWarn[10], equals(0x49));
+      expect(bpWarn.sublist(13), equals([1, 145, 90, 95, 60]));
+    });
+  });
 }

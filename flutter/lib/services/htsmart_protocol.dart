@@ -759,4 +759,110 @@ class HtsmartProtocol {
       seq: seq,
     );
   }
+
+  // ==========================================
+  // Music Sync & Health Warning Thresholds (Cmd 0x02)
+  // ==========================================
+
+  /// Builds Now-Playing Music Track Info packet (Cmd 0x02, Key 0x94 / 148)
+  static List<int> buildMusicInfoPacket({
+    required String title,
+    required String artist,
+    int durationMs = 0,
+    int seq = 1,
+  }) {
+    final titleBytes = utf8.encode(title);
+    final artistBytes = utf8.encode(artist);
+    final titleLen = titleBytes.length.clamp(0, 127);
+    final artistLen = artistBytes.length.clamp(0, 96);
+
+    final payload = <int>[
+      titleLen & 0xFF,
+      artistLen & 0xFF,
+      (durationMs >> 24) & 0xFF,
+      (durationMs >> 16) & 0xFF,
+      (durationMs >> 8) & 0xFF,
+      durationMs & 0xFF,
+      ...titleBytes.take(titleLen),
+      ...artistBytes.take(artistLen),
+    ];
+
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x94,
+      payload: payload,
+      seq: seq,
+    );
+  }
+
+  /// Builds Now-Playing Music Playback State packet (Cmd 0x02, Key 0x93 / 147)
+  /// playState: 1 = Playing, 2 = Paused
+  static List<int> buildMusicStatePacket({
+    required bool isPlaying,
+    int positionMs = 0,
+    double volume = 1.0,
+    int seq = 1,
+  }) {
+    final volScaled = (volume.clamp(0.0, 1.0) * 100.0).round();
+    final payload = <int>[
+      isPlaying ? 1 : 2,
+      (positionMs >> 24) & 0xFF,
+      (positionMs >> 16) & 0xFF,
+      (positionMs >> 8) & 0xFF,
+      positionMs & 0xFF,
+      (volScaled >> 8) & 0xFF,
+      volScaled & 0xFF,
+    ];
+
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x93,
+      payload: payload,
+      seq: seq,
+    );
+  }
+
+  /// Builds Heart Rate Warning Thresholds packet (Cmd 0x02, Key 0x46 / 70)
+  static List<int> buildWarnHeartRatePacket({
+    required bool staticEnable,
+    required int staticBpm,
+    required bool dynamicEnable,
+    required int dynamicBpm,
+    int seq = 1,
+  }) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x46,
+      payload: [
+        staticEnable ? 1 : 0,
+        staticBpm.clamp(40, 220) & 0xFF,
+        dynamicEnable ? 1 : 0,
+        dynamicBpm.clamp(60, 220) & 0xFF,
+      ],
+      seq: seq,
+    );
+  }
+
+  /// Builds Blood Pressure Warning Thresholds packet (Cmd 0x02, Key 0x49 / 73)
+  static List<int> buildWarnBloodPressurePacket({
+    required bool enable,
+    required int sbpUpper,
+    required int sbpLower,
+    required int dbpUpper,
+    required int dbpLower,
+    int seq = 1,
+  }) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x49,
+      payload: [
+        enable ? 1 : 0,
+        sbpUpper.clamp(80, 240) & 0xFF,
+        sbpLower.clamp(50, 160) & 0xFF,
+        dbpUpper.clamp(50, 160) & 0xFF,
+        dbpLower.clamp(30, 120) & 0xFF,
+      ],
+      seq: seq,
+    );
+  }
 }

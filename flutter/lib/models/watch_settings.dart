@@ -55,6 +55,18 @@ class WatchSettings {
   final double weightKg;
   final String weatherCity;
   final bool keepAliveInBackground;
+  final bool musicSyncEnabled;
+
+  // Heart Rate & Blood Pressure Warning Thresholds
+  final bool warnHrStaticEnabled;
+  final int warnHrStaticBpm;
+  final bool warnHrDynamicEnabled;
+  final int warnHrDynamicBpm;
+  final bool warnBpEnabled;
+  final int warnBpSbpUpper;
+  final int warnBpSbpLower;
+  final int warnBpDbpUpper;
+  final int warnBpDbpLower;
 
   const WatchSettings({
     this.brightness = 3,
@@ -96,6 +108,16 @@ class WatchSettings {
     this.weightKg = 70.0,
     this.weatherCity = 'Bengaluru',
     this.keepAliveInBackground = true,
+    this.musicSyncEnabled = true,
+    this.warnHrStaticEnabled = false,
+    this.warnHrStaticBpm = 120,
+    this.warnHrDynamicEnabled = false,
+    this.warnHrDynamicBpm = 170,
+    this.warnBpEnabled = false,
+    this.warnBpSbpUpper = 140,
+    this.warnBpSbpLower = 90,
+    this.warnBpDbpUpper = 90,
+    this.warnBpDbpLower = 60,
   });
 
   WatchSettings copyWith({
@@ -138,6 +160,16 @@ class WatchSettings {
     double? weightKg,
     String? weatherCity,
     bool? keepAliveInBackground,
+    bool? musicSyncEnabled,
+    bool? warnHrStaticEnabled,
+    int? warnHrStaticBpm,
+    bool? warnHrDynamicEnabled,
+    int? warnHrDynamicBpm,
+    bool? warnBpEnabled,
+    int? warnBpSbpUpper,
+    int? warnBpSbpLower,
+    int? warnBpDbpUpper,
+    int? warnBpDbpLower,
   }) {
     return WatchSettings(
       brightness: brightness ?? this.brightness,
@@ -179,6 +211,16 @@ class WatchSettings {
       weightKg: weightKg ?? this.weightKg,
       weatherCity: weatherCity ?? this.weatherCity,
       keepAliveInBackground: keepAliveInBackground ?? this.keepAliveInBackground,
+      musicSyncEnabled: musicSyncEnabled ?? this.musicSyncEnabled,
+      warnHrStaticEnabled: warnHrStaticEnabled ?? this.warnHrStaticEnabled,
+      warnHrStaticBpm: warnHrStaticBpm ?? this.warnHrStaticBpm,
+      warnHrDynamicEnabled: warnHrDynamicEnabled ?? this.warnHrDynamicEnabled,
+      warnHrDynamicBpm: warnHrDynamicBpm ?? this.warnHrDynamicBpm,
+      warnBpEnabled: warnBpEnabled ?? this.warnBpEnabled,
+      warnBpSbpUpper: warnBpSbpUpper ?? this.warnBpSbpUpper,
+      warnBpSbpLower: warnBpSbpLower ?? this.warnBpSbpLower,
+      warnBpDbpUpper: warnBpDbpUpper ?? this.warnBpDbpUpper,
+      warnBpDbpLower: warnBpDbpLower ?? this.warnBpDbpLower,
     );
   }
 
@@ -223,6 +265,16 @@ class WatchSettings {
       'weightKg': weightKg,
       'weatherCity': weatherCity,
       'keepAliveInBackground': keepAliveInBackground,
+      'musicSyncEnabled': musicSyncEnabled,
+      'warnHrStaticEnabled': warnHrStaticEnabled,
+      'warnHrStaticBpm': warnHrStaticBpm,
+      'warnHrDynamicEnabled': warnHrDynamicEnabled,
+      'warnHrDynamicBpm': warnHrDynamicBpm,
+      'warnBpEnabled': warnBpEnabled,
+      'warnBpSbpUpper': warnBpSbpUpper,
+      'warnBpSbpLower': warnBpSbpLower,
+      'warnBpDbpUpper': warnBpDbpUpper,
+      'warnBpDbpLower': warnBpDbpLower,
     };
   }
 
@@ -267,6 +319,16 @@ class WatchSettings {
       weightKg: (map['weightKg'] as num?)?.toDouble() ?? 70.0,
       weatherCity: map['weatherCity'] as String? ?? 'Bengaluru',
       keepAliveInBackground: map['keepAliveInBackground'] as bool? ?? true,
+      musicSyncEnabled: map['musicSyncEnabled'] as bool? ?? true,
+      warnHrStaticEnabled: map['warnHrStaticEnabled'] as bool? ?? false,
+      warnHrStaticBpm: map['warnHrStaticBpm'] as int? ?? 120,
+      warnHrDynamicEnabled: map['warnHrDynamicEnabled'] as bool? ?? false,
+      warnHrDynamicBpm: map['warnHrDynamicBpm'] as int? ?? 170,
+      warnBpEnabled: map['warnBpEnabled'] as bool? ?? false,
+      warnBpSbpUpper: map['warnBpSbpUpper'] as int? ?? 140,
+      warnBpSbpLower: map['warnBpSbpLower'] as int? ?? 90,
+      warnBpDbpUpper: map['warnBpDbpUpper'] as int? ?? 90,
+      warnBpDbpLower: map['warnBpDbpLower'] as int? ?? 60,
     );
   }
 

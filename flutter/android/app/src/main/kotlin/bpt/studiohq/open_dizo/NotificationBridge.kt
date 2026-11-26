@@ -39,6 +39,24 @@ object NotificationBridge {
         emit(payload)
     }
 
+    fun sendMusicUpdate(
+        title: String,
+        artist: String,
+        durationMs: Long,
+        isPlaying: Boolean,
+        positionMs: Long
+    ) {
+        val payload = hashMapOf<String, Any>(
+            "event" to "music_update",
+            "title" to title,
+            "artist" to artist,
+            "durationMs" to durationMs,
+            "isPlaying" to isPlaying,
+            "positionMs" to positionMs
+        )
+        emit(payload)
+    }
+
     private fun emit(payload: Map<String, Any>) {
         val sink = eventSink ?: return
         mainHandler.post {

@@ -889,6 +889,28 @@ class BleService extends ChangeNotifier {
       stopFindPhoneAlert(sendAck: false);
       return;
     }
+
+    // 11. Watch Media Control buttons: Cmd 0x07, Key 0x03
+    if (cmdId == 0x07 && keyId == 0x03 && keyData.isNotEmpty) {
+      final code = keyData[0] & 0xFF;
+      String? mediaAction;
+      if (code == 0 || code == 1 || code == 2) {
+        mediaAction = 'play_pause';
+      } else if (code == 3) {
+        mediaAction = 'next';
+      } else if (code == 4) {
+        mediaAction = 'previous';
+      } else if (code == 5) {
+        mediaAction = 'vol_up';
+      } else if (code == 6) {
+        mediaAction = 'vol_down';
+      }
+      if (mediaAction != null && !kIsWeb && Platform.isAndroid) {
+        log('Watch Media Control: $mediaAction', type: LogType.info);
+        _notifMethodChannel.invokeMethod('dispatchMediaAction', {'action': mediaAction});
+      }
+      return;
+    }
   }
 
   void _decodeLegacyTelemetry(List<int> data) {
@@ -1595,8 +1617,35 @@ class BleService extends ChangeNotifier {
   }
 
   void _handleNativeNotificationEvent(Map<String, dynamic> data) {
-    if (!_isConnected || !_notificationSettings.masterEnabled) return;
+    if (!_isConnected) return;
     final eventType = data['event'] as String? ?? '';
+
+    if (eventType == 'music_update') {
+      if (!_settings.musicSyncEnabled) return;
+      final title = data['title'] as String? ?? '';
+      final artist = data['artist'] as String? ?? '';
+      final durationMs = (data['durationMs'] as num?)?.toInt() ?? 0;
+      final isPlaying = data['isPlaying'] as bool? ?? false;
+      final positionMs = (data['positionMs'] as num?)?.toInt() ?? 0;
+
+      final infoPacket = HtsmartProtocol.buildMusicInfoPacket(
+        title: title,
+        artist: artist,
+        durationMs: durationMs,
+        seq: _nextSeq(),
+      );
+      writeFF02(infoPacket, 'Sync Music Info ($title)');
+
+      final statePacket = HtsmartProtocol.buildMusicStatePacket(
+        isPlaying: isPlaying,
+        positionMs: positionMs,
+        seq: _nextSeq(),
+      );
+      writeFF02(statePacket, 'Sync Music State (${isPlaying ? "Playing" : "Paused"})');
+      return;
+    }
+
+    if (!_notificationSettings.masterEnabled) return;
 
     if (eventType == 'call_ringing') {
       if (!_notificationSettings.incomingCalls) return;
@@ -1894,6 +1943,73 @@ class BleService extends ChangeNotifier {
     _savePersistedHistory();
     notifyListeners();
     log('Watch history parsed & saved (${allDates.length} days) ✓', type: LogType.success);
+  }
+
+  // ==========================================
+  // Music Sync & Health Warning Thresholds
+  // ==========================================
+
+  Future<void> setMusicSyncEnabled(bool enabled) async {
+    _settings = _settings.copyWith(musicSyncEnabled: enabled);
+    notifyListeners();
+    await _saveSettings();
+  }
+
+  Future<void> updateWarnHeartRate({
+    required bool staticEnable,
+    required int staticBpm,
+    required bool dynamicEnable,
+    required int dynamicBpm,
+  }) async {
+    _settings = _settings.copyWith(
+      warnHrStaticEnabled: staticEnable,
+      warnHrStaticBpm: staticBpm,
+      warnHrDynamicEnabled: dynamicEnable,
+      warnHrDynamicBpm: dynamicBpm,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildWarnHeartRatePacket(
+        staticEnable: staticEnable,
+        staticBpm: staticBpm,
+        dynamicEnable: dynamicEnable,
+        dynamicBpm: dynamicBpm,
+        seq: _nextSeq(),
+      );
+      await writeFF02(packet, 'Update HR Warning Thresholds');
+    }
+  }
+
+  Future<void> updateWarnBloodPressure({
+    required bool enable,
+    required int sbpUpper,
+    required int sbpLower,
+    required int dbpUpper,
+    required int dbpLower,
+  }) async {
+    _settings = _settings.copyWith(
+      warnBpEnabled: enable,
+      warnBpSbpUpper: sbpUpper,
+      warnBpSbpLower: sbpLower,
+      warnBpDbpUpper: dbpUpper,
+      warnBpDbpLower: dbpLower,
+    );
+    notifyListeners();
+    await _saveSettings();
+
+    if (_isConnected) {
+      final packet = HtsmartProtocol.buildWarnBloodPressurePacket(
+        enable: enable,
+        sbpUpper: sbpUpper,
+        sbpLower: sbpLower,
+        dbpUpper: dbpUpper,
+        dbpLower: dbpLower,
+        seq: _nextSeq(),
+      );
+      await writeFF02(packet, 'Update BP Warning Thresholds');
+    }
   }
 
   static String _hex(List<int> bytes) =>

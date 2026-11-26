@@ -119,6 +119,18 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
         _buildGoalsProfileCard(settings),
         const SizedBox(height: 20),
 
+        // 6. Now-Playing Music Sync
+        _buildSectionHeader('Music & Media Control', 'Sync track info & control playback from wrist'),
+        const SizedBox(height: 12),
+        _buildMusicSyncCard(settings),
+        const SizedBox(height: 20),
+
+        // 7. Health Warning Thresholds
+        _buildSectionHeader('Health Warning Alerts', 'Vibrate watch on abnormal HR or BP'),
+        const SizedBox(height: 12),
+        _buildHealthWarningsCard(settings),
+        const SizedBox(height: 20),
+
         // 6. Time & System Preferences
         _buildSectionHeader('Preferences & Units', 'Format and measurement system'),
         const SizedBox(height: 12),
@@ -1179,6 +1191,263 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
                       age: age,
                       heightCm: heightCm,
                       weightKg: weightKg,
+                    );
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Save & Sync to Watch'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMusicSyncCard(WatchSettings settings) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.sleep.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.music_note_rounded, color: AppTheme.sleep, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Now-Playing Track Sync',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                  ),
+                  Text(
+                    'Display song title & control from watch',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Switch(
+            value: settings.musicSyncEnabled,
+            onChanged: (val) => widget.bleService.setMusicSyncEnabled(val),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHealthWarningsCard(WatchSettings settings) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.heartRate.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.monitor_heart_rounded, color: AppTheme.heartRate, size: 20),
+            ),
+            title: const Text('Heart Rate Thresholds', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              (settings.warnHrStaticEnabled || settings.warnHrDynamicEnabled)
+                  ? 'Resting > ${settings.warnHrStaticBpm} · Active > ${settings.warnHrDynamicBpm} BPM'
+                  : 'Alerts disabled',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+            onTap: () => _showHrWarnDialog(settings),
+          ),
+          const Divider(height: 16, color: AppTheme.borderSubtle),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.bloodPressure.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.bloodtype_rounded, color: AppTheme.bloodPressure, size: 20),
+            ),
+            title: const Text('Blood Pressure Thresholds', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              settings.warnBpEnabled
+                  ? 'SBP ${settings.warnBpSbpLower}-${settings.warnBpSbpUpper} · DBP ${settings.warnBpDbpLower}-${settings.warnBpDbpUpper}'
+                  : 'Alerts disabled',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+            onTap: () => _showBpWarnDialog(settings),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showHrWarnDialog(WatchSettings settings) async {
+    bool staticEnable = settings.warnHrStaticEnabled;
+    int staticBpm = settings.warnHrStaticBpm;
+    bool dynamicEnable = settings.warnHrDynamicEnabled;
+    int dynamicBpm = settings.warnHrDynamicBpm;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Heart Rate Warning Alerts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 14),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('Resting High HR Alert ($staticBpm BPM)', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Warn when resting HR exceeds limit', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                value: staticEnable,
+                onChanged: (v) => setModalState(() => staticEnable = v),
+              ),
+              if (staticEnable)
+                Slider(
+                  value: staticBpm.toDouble().clamp(80, 160),
+                  min: 80,
+                  max: 160,
+                  divisions: 16,
+                  activeColor: AppTheme.heartRate,
+                  onChanged: (v) => setModalState(() => staticBpm = v.round()),
+                ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('Active High HR Alert ($dynamicBpm BPM)', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Warn during exercise if HR exceeds limit', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                value: dynamicEnable,
+                onChanged: (v) => setModalState(() => dynamicEnable = v),
+              ),
+              if (dynamicEnable)
+                Slider(
+                  value: dynamicBpm.toDouble().clamp(120, 210),
+                  min: 120,
+                  max: 210,
+                  divisions: 18,
+                  activeColor: AppTheme.heartRate,
+                  onChanged: (v) => setModalState(() => dynamicBpm = v.round()),
+                ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    widget.bleService.updateWarnHeartRate(
+                      staticEnable: staticEnable,
+                      staticBpm: staticBpm,
+                      dynamicEnable: dynamicEnable,
+                      dynamicBpm: dynamicBpm,
+                    );
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Save & Sync to Watch'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showBpWarnDialog(WatchSettings settings) async {
+    bool enable = settings.warnBpEnabled;
+    int sbpUpper = settings.warnBpSbpUpper;
+    int sbpLower = settings.warnBpSbpLower;
+    int dbpUpper = settings.warnBpDbpUpper;
+    int dbpLower = settings.warnBpDbpLower;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Blood Pressure Warnings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Enable BP Alert Thresholds', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                value: enable,
+                onChanged: (v) => setModalState(() => enable = v),
+              ),
+              if (enable) ...[
+                Text('Systolic (SBP) Range: $sbpLower – $sbpUpper mmHg', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                RangeSlider(
+                  values: RangeValues(sbpLower.toDouble(), sbpUpper.toDouble()),
+                  min: 70,
+                  max: 200,
+                  divisions: 26,
+                  activeColor: AppTheme.bloodPressure,
+                  onChanged: (r) => setModalState(() {
+                    sbpLower = r.start.round();
+                    sbpUpper = r.end.round();
+                  }),
+                ),
+                Text('Diastolic (DBP) Range: $dbpLower – $dbpUpper mmHg', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                RangeSlider(
+                  values: RangeValues(dbpLower.toDouble(), dbpUpper.toDouble()),
+                  min: 40,
+                  max: 130,
+                  divisions: 18,
+                  activeColor: AppTheme.bloodPressure,
+                  onChanged: (r) => setModalState(() {
+                    dbpLower = r.start.round();
+                    dbpUpper = r.end.round();
+                  }),
+                ),
+              ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    widget.bleService.updateWarnBloodPressure(
+                      enable: enable,
+                      sbpUpper: sbpUpper,
+                      sbpLower: sbpLower,
+                      dbpUpper: dbpUpper,
+                      dbpLower: dbpLower,
                     );
                     Navigator.pop(ctx);
                   },

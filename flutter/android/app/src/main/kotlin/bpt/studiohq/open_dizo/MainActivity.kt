@@ -4,14 +4,17 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -117,6 +120,11 @@ class MainActivity : FlutterActivity() {
                     startService(intent)
                     result.success(true)
                 }
+                "dispatchMediaAction" -> {
+                    val action = call.argument<String>("action") ?: ""
+                    handleMediaAction(action)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -177,5 +185,33 @@ class MainActivity : FlutterActivity() {
             @Suppress("DEPRECATION")
             getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         }
+    }
+
+    private fun handleMediaAction(action: String) {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            when (action) {
+                "play_pause" -> dispatchMediaKey(audioManager, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                "next" -> dispatchMediaKey(audioManager, KeyEvent.KEYCODE_MEDIA_NEXT)
+                "previous" -> dispatchMediaKey(audioManager, KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+                "vol_up" -> audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_RAISE,
+                    AudioManager.FLAG_SHOW_UI
+                )
+                "vol_down" -> audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_LOWER,
+                    AudioManager.FLAG_SHOW_UI
+                )
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun dispatchMediaKey(audioManager: AudioManager, keyCode: Int) {
+        val now = SystemClock.uptimeMillis()
+        audioManager.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0))
+        audioManager.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0))
     }
 }
