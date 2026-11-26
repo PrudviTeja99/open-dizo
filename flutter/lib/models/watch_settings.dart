@@ -68,6 +68,10 @@ class WatchSettings {
   final int warnBpDbpUpper;
   final int warnBpDbpLower;
 
+  // Language & Apply Target
+  final String languageCode;
+  final String languageTarget; // 'both', 'appOnly', 'watchOnly'
+
   const WatchSettings({
     this.brightness = 3,
     this.screenTimeoutSeconds = 5,
@@ -118,6 +122,8 @@ class WatchSettings {
     this.warnBpSbpLower = 90,
     this.warnBpDbpUpper = 90,
     this.warnBpDbpLower = 60,
+    this.languageCode = 'en',
+    this.languageTarget = 'both',
   });
 
   WatchSettings copyWith({
@@ -170,6 +176,8 @@ class WatchSettings {
     int? warnBpSbpLower,
     int? warnBpDbpUpper,
     int? warnBpDbpLower,
+    String? languageCode,
+    String? languageTarget,
   }) {
     return WatchSettings(
       brightness: brightness ?? this.brightness,
@@ -221,6 +229,8 @@ class WatchSettings {
       warnBpSbpLower: warnBpSbpLower ?? this.warnBpSbpLower,
       warnBpDbpUpper: warnBpDbpUpper ?? this.warnBpDbpUpper,
       warnBpDbpLower: warnBpDbpLower ?? this.warnBpDbpLower,
+      languageCode: languageCode ?? this.languageCode,
+      languageTarget: languageTarget ?? this.languageTarget,
     );
   }
 
@@ -275,6 +285,8 @@ class WatchSettings {
       'warnBpSbpLower': warnBpSbpLower,
       'warnBpDbpUpper': warnBpDbpUpper,
       'warnBpDbpLower': warnBpDbpLower,
+      'languageCode': languageCode,
+      'languageTarget': languageTarget,
     };
   }
 
@@ -329,6 +341,8 @@ class WatchSettings {
       warnBpSbpLower: map['warnBpSbpLower'] as int? ?? 90,
       warnBpDbpUpper: map['warnBpDbpUpper'] as int? ?? 90,
       warnBpDbpLower: map['warnBpDbpLower'] as int? ?? 60,
+      languageCode: map['languageCode'] as String? ?? 'en',
+      languageTarget: map['languageTarget'] as String? ?? 'both',
     );
   }
 

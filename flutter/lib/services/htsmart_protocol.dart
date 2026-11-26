@@ -865,4 +865,15 @@ class HtsmartProtocol {
       seq: seq,
     );
   }
+
+  /// Builds Watch UI Language packet (Cmd 0x02, Key 0x3A / 58)
+  /// languageCode: 3=English, 19=Hindi, 61=Kannada, 63=Malayalam, 64=Marathi, 65=Tamil, 67=Telugu, etc.
+  static List<int> buildSetLanguagePacket(int languageCode, {int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x02,
+      keyId: 0x3A,
+      payload: [languageCode & 0xFF, 0, 0, 0],
+      seq: seq,
+    );
+  }
 }

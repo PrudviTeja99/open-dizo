@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/l10n/app_strings.dart';
 import '../../services/ble_service.dart';
 import '../dialogs/connect_device_modal.dart';
 import '../dialogs/app_update_dialog.dart';
@@ -38,11 +39,11 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  static const _tabTitles = [
-    'Health & Activity',
-    'Watch Face Studio',
-    'Alarms & Alerts',
-    'Device Settings',
+  static const _tabTitleKeys = [
+    'title_health',
+    'title_studio',
+    'title_reminders',
+    'title_device',
   ];
 
   @override
@@ -50,7 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final isConnected = _bleService.isConnected;
     final isBusy = _bleService.isScanning || _bleService.isConnecting;
 
-    return Scaffold(
+    return ValueListenableBuilder<AppLanguage>(
+      valueListenable: AppStrings.currentLanguage,
+      builder: (context, _, __) => Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: Row(
@@ -77,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Text(
-                  _tabTitles[_currentIndex],
+                  AppStrings.t(_tabTitleKeys[_currentIndex]),
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppTheme.textMuted,
@@ -114,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    isConnected ? 'Connected' : 'Offline',
+                    isConnected ? AppStrings.t('connected') : AppStrings.t('offline'),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -203,30 +206,31 @@ class _HomeScreenState extends State<HomeScreen> {
           indicatorColor: AppTheme.accent.withOpacity(0.18),
           elevation: 0,
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          destinations: const [
+          destinations: [
             NavigationDestination(
-              icon: Icon(Icons.insights_rounded, color: AppTheme.textMuted, size: 22),
-              selectedIcon: Icon(Icons.insights_rounded, color: AppTheme.accent, size: 22),
-              label: 'Health',
+              icon: const Icon(Icons.insights_rounded, color: AppTheme.textMuted, size: 22),
+              selectedIcon: const Icon(Icons.insights_rounded, color: AppTheme.accent, size: 22),
+              label: AppStrings.t('tab_health'),
             ),
             NavigationDestination(
-              icon: Icon(Icons.palette_rounded, color: AppTheme.textMuted, size: 22),
-              selectedIcon: Icon(Icons.palette_rounded, color: AppTheme.accent, size: 22),
-              label: 'Studio',
+              icon: const Icon(Icons.palette_rounded, color: AppTheme.textMuted, size: 22),
+              selectedIcon: const Icon(Icons.palette_rounded, color: AppTheme.accent, size: 22),
+              label: AppStrings.t('tab_studio'),
             ),
             NavigationDestination(
-              icon: Icon(Icons.alarm_rounded, color: AppTheme.textMuted, size: 22),
-              selectedIcon: Icon(Icons.alarm_rounded, color: AppTheme.accent, size: 22),
-              label: 'Reminders',
+              icon: const Icon(Icons.alarm_rounded, color: AppTheme.textMuted, size: 22),
+              selectedIcon: const Icon(Icons.alarm_rounded, color: AppTheme.accent, size: 22),
+              label: AppStrings.t('tab_reminders'),
             ),
             NavigationDestination(
-              icon: Icon(Icons.tune_rounded, color: AppTheme.textMuted, size: 22),
-              selectedIcon: Icon(Icons.tune_rounded, color: AppTheme.accent, size: 22),
-              label: 'Device',
+              icon: const Icon(Icons.tune_rounded, color: AppTheme.textMuted, size: 22),
+              selectedIcon: const Icon(Icons.tune_rounded, color: AppTheme.accent, size: 22),
+              label: AppStrings.t('tab_device'),
             ),
           ],
         ),
       ),
+    ),
     );
   }
 }

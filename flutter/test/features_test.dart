@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_dizo/core/l10n/app_strings.dart';
 import 'package:open_dizo/models/watch_alarm.dart';
+import 'package:open_dizo/models/watch_settings.dart';
 import 'package:open_dizo/models/notification_settings.dart';
 import 'package:open_dizo/models/historical_health.dart';
 import 'package:open_dizo/services/htsmart_protocol.dart';
@@ -287,6 +289,58 @@ void main() {
       expect(bpWarn[8], equals(0x02));
       expect(bpWarn[10], equals(0x49));
       expect(bpWarn.sublist(13), equals([1, 145, 90, 95, 60]));
+    });
+
+    test('buildSetLanguagePacket uses Cmd 0x02 Key 0x3A with watch code', () {
+      final teluguPacket = HtsmartProtocol.buildSetLanguagePacket(
+        AppLanguage.telugu.watchCode,
+      );
+      expect(teluguPacket[8], equals(0x02));
+      expect(teluguPacket[10], equals(0x3A));
+      expect(teluguPacket.sublist(13), equals([67, 0, 0, 0]));
+
+      final hindiPacket = HtsmartProtocol.buildSetLanguagePacket(
+        AppLanguage.hindi.watchCode,
+      );
+      expect(hindiPacket.sublist(13), equals([19, 0, 0, 0]));
+    });
+  });
+
+  group('Multi-Language & Apply Target Tests', () {
+    test('AppLanguage maps Telugu (67) and Hindi (19) correctly', () {
+      expect(AppLanguage.telugu.code, equals('te'));
+      expect(AppLanguage.telugu.watchCode, equals(67));
+      expect(AppLanguage.fromCode('te'), equals(AppLanguage.telugu));
+      expect(AppLanguage.hindi.watchCode, equals(19));
+      expect(AppLanguage.fromCode('unknown'), equals(AppLanguage.english));
+    });
+
+    test('AppStrings switches active language and falls back cleanly', () {
+      AppStrings.setLanguage(AppLanguage.telugu);
+      expect(AppStrings.currentLanguage.value, equals(AppLanguage.telugu));
+      expect(AppStrings.t('steps'), equals('అడుగులు'));
+
+      AppStrings.setLanguage(AppLanguage.hindi);
+      expect(AppStrings.t('steps'), equals('कदम'));
+
+      // Reset to English
+      AppStrings.setLanguage(AppLanguage.english);
+      expect(AppStrings.t('steps'), equals('Steps'));
+    });
+
+    test('WatchSettings persists languageCode and languageTarget', () {
+      const settings = WatchSettings(
+        languageCode: 'te',
+        languageTarget: 'watchOnly',
+      );
+      final map = settings.toMap();
+      final decoded = WatchSettings.fromMap(map);
+      expect(decoded.languageCode, equals('te'));
+      expect(decoded.languageTarget, equals('watchOnly'));
+      expect(
+        LanguageApplyTarget.fromId(decoded.languageTarget),
+        equals(LanguageApplyTarget.watchOnly),
+      );
     });
   });
 }

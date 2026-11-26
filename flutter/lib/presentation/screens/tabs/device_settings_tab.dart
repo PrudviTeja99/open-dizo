@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../models/watch_settings.dart';
 import '../../../models/notification_settings.dart';
 import '../../../services/ble_service.dart';
@@ -96,49 +97,55 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
         const SizedBox(height: 20),
 
         // 2. Notifications & Incoming Call Hub
-        _buildSectionHeader('Notifications & Calls', 'Alerts forwarded directly to watch screen'),
+        _buildSectionHeader(AppStrings.t('notifications_calls'), 'Alerts forwarded directly to watch screen'),
         const SizedBox(height: 12),
         _buildNotificationsCard(notifs, isConnected),
         const SizedBox(height: 20),
 
         // 3. Display & Wrist Gestures
-        _buildSectionHeader('Display & Gestures', 'Screen brightness, timeouts, and gestures'),
+        _buildSectionHeader(AppStrings.t('display_gestures'), 'Screen brightness, timeouts, and gestures'),
         const SizedBox(height: 12),
         _buildDisplayGesturesCard(settings),
         const SizedBox(height: 20),
 
         // 4. Live Weather Sync
-        _buildSectionHeader('Weather Sync', 'Push live forecast to watch Weather app'),
+        _buildSectionHeader(AppStrings.t('weather_sync'), 'Push live forecast to watch Weather app'),
         const SizedBox(height: 12),
         _buildWeatherCard(settings, isConnected),
         const SizedBox(height: 20),
 
         // 5. Fitness Goals & Body Profile
-        _buildSectionHeader('Fitness Goals & Profile', 'Calibrates stride length & calorie burn'),
+        _buildSectionHeader(AppStrings.t('fitness_goals'), 'Calibrates stride length & calorie burn'),
         const SizedBox(height: 12),
         _buildGoalsProfileCard(settings),
         const SizedBox(height: 20),
 
         // 6. Now-Playing Music Sync
-        _buildSectionHeader('Music & Media Control', 'Sync track info & control playback from wrist'),
+        _buildSectionHeader(AppStrings.t('music_control'), 'Sync track info & control playback from wrist'),
         const SizedBox(height: 12),
         _buildMusicSyncCard(settings),
         const SizedBox(height: 20),
 
         // 7. Health Warning Thresholds
-        _buildSectionHeader('Health Warning Alerts', 'Vibrate watch on abnormal HR or BP'),
+        _buildSectionHeader(AppStrings.t('health_warnings'), 'Vibrate watch on abnormal HR or BP'),
         const SizedBox(height: 12),
         _buildHealthWarningsCard(settings),
         const SizedBox(height: 20),
 
-        // 6. Time & System Preferences
-        _buildSectionHeader('Preferences & Units', 'Format and measurement system'),
+        // 8. Language & Apply Target
+        _buildSectionHeader(AppStrings.t('language'), 'Apply to App, Watch, or Both independently'),
+        const SizedBox(height: 12),
+        _buildLanguageCard(settings),
+        const SizedBox(height: 20),
+
+        // 9. Time & System Preferences
+        _buildSectionHeader(AppStrings.t('preferences_units'), 'Format and measurement system'),
         const SizedBox(height: 12),
         _buildPreferencesCard(settings),
         const SizedBox(height: 20),
 
-        // 7. System Tools & Maintenance
-        _buildSectionHeader('System & Diagnostics', 'Firmware, updates, and device management'),
+        // 10. System Tools & Maintenance
+        _buildSectionHeader(AppStrings.t('system_diagnostics'), 'Firmware, updates, and device management'),
         const SizedBox(height: 12),
         _buildMaintenanceCard(isConnected),
         const SizedBox(height: 36),
@@ -1452,6 +1459,141 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
                     Navigator.pop(ctx);
                   },
                   child: const Text('Save & Sync to Watch'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageCard(WatchSettings settings) {
+    final currentLang = AppLanguage.fromCode(settings.languageCode);
+    final currentTarget = LanguageApplyTarget.fromId(settings.languageTarget);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.translate_rounded, color: AppTheme.accent, size: 20),
+            ),
+            title: Text(
+              currentLang.nativeName == currentLang.englishName
+                  ? currentLang.englishName
+                  : '${currentLang.nativeName} (${currentLang.englishName})',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+            ),
+            subtitle: Text(
+              'Watch Protocol ID: ${currentLang.watchCode}',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+            onTap: () => _showLanguagePicker(currentLang),
+          ),
+          const Divider(height: 18, color: AppTheme.borderSubtle),
+          Text(
+            AppStrings.t('apply_language_to'),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: LanguageApplyTarget.values.map((t) {
+              final isSelected = currentTarget == t;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => widget.bleService.setLanguagePreference(target: t),
+                  child: Container(
+                    margin: EdgeInsets.only(right: t == LanguageApplyTarget.watchOnly ? 0 : 8),
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppTheme.accent : AppTheme.surfaceLight,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? AppTheme.accent : AppTheme.borderSubtle,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        t.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isSelected ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLanguagePicker(AppLanguage currentLang) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                AppStrings.t('language'),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 380),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: AppLanguage.values.map((lang) {
+                    final isSel = lang == currentLang;
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      title: Text(
+                        lang.nativeName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: isSel ? AppTheme.accent : AppTheme.textPrimary,
+                        ),
+                      ),
+                      subtitle: Text(
+                        lang.englishName,
+                        style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                      trailing: isSel
+                          ? const Icon(Icons.check_circle_rounded, color: AppTheme.accent)
+                          : null,
+                      onTap: () {
+                        widget.bleService.setLanguagePreference(language: lang);
+                        Navigator.pop(ctx);
+                      },
+                    );
+                  }).toList(),
                 ),
               ),
             ],

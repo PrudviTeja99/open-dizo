@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants/dizo_uuids.dart';
+import '../core/l10n/app_strings.dart';
 import '../models/discovered_device.dart';
 import '../models/log_entry.dart';
 import '../models/watch_telemetry.dart';
@@ -191,6 +192,11 @@ class BleService extends ChangeNotifier {
       final cachedSettings = prefs.getString('cached_settings');
       if (cachedSettings != null) {
         _settings = WatchSettings.fromJson(cachedSettings);
+        final lang = AppLanguage.fromCode(_settings.languageCode);
+        final target = LanguageApplyTarget.fromId(_settings.languageTarget);
+        AppStrings.setLanguage(
+          target == LanguageApplyTarget.watchOnly ? AppLanguage.english : lang,
+        );
       }
       final cachedRaw = prefs.getString('cached_raw_brightness');
       if (cachedRaw != null) {
@@ -2009,6 +2015,46 @@ class BleService extends ChangeNotifier {
         seq: _nextSeq(),
       );
       await writeFF02(packet, 'Update BP Warning Thresholds');
+    }
+  }
+
+  // ==========================================
+  // Language & Apply Target (App / Watch / Both)
+  // ==========================================
+
+  /// Updates language and/or apply target independently.
+  /// Changing only [target] immediately reflects on App and/or Watch without re-selecting language.
+  Future<void> setLanguagePreference({
+    AppLanguage? language,
+    LanguageApplyTarget? target,
+  }) async {
+    final nextLang = language ?? AppLanguage.fromCode(_settings.languageCode);
+    final nextTarget = target ?? LanguageApplyTarget.fromId(_settings.languageTarget);
+
+    _settings = _settings.copyWith(
+      languageCode: nextLang.code,
+      languageTarget: nextTarget.id,
+    );
+
+    // Immediately reflect on App UI
+    final appLang = nextTarget == LanguageApplyTarget.watchOnly
+        ? AppLanguage.english
+        : nextLang;
+    AppStrings.setLanguage(appLang);
+
+    notifyListeners();
+    await _saveSettings();
+
+    // Immediately reflect on Watch if connected
+    if (_isConnected) {
+      final watchLangCode = nextTarget == LanguageApplyTarget.appOnly
+          ? AppLanguage.english.watchCode
+          : nextLang.watchCode;
+      final packet = HtsmartProtocol.buildSetLanguagePacket(watchLangCode, seq: _nextSeq());
+      await writeFF02(
+        packet,
+        'Set Watch Language (${nextTarget == LanguageApplyTarget.appOnly ? "English" : nextLang.englishName})',
+      );
     }
   }
 
