@@ -72,30 +72,25 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
     final sleepMins = (telemetry.deepSleepMinutes ?? 0) + (telemetry.lightSleepMinutes ?? 0);
     final targetSteps = widget.bleService.settings.targetSteps;
 
-    return RefreshIndicator(
-      color: AppTheme.accent,
-      backgroundColor: AppTheme.surface,
-      onRefresh: _handleSync,
-      child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        children: [
-          // 1. Hero Watch Connection & Battery Capsule
-          _buildConnectionHero(isConnected, telemetry.battery, telemetry.lastSyncTime),
-          const SizedBox(height: 16),
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      children: [
+        // 1. Hero Watch Connection & Battery Capsule
+        _buildConnectionHero(isConnected, telemetry.battery, telemetry.lastSyncTime),
+        const SizedBox(height: 16),
 
-          // 2. Primary Activity Progress Ring Card
-          _buildActivityRingCard(steps, targetSteps, calories, distKm),
-          const SizedBox(height: 16),
+        // 2. Primary Activity Progress Ring Card
+        _buildActivityRingCard(steps, targetSteps, calories, distKm),
+        const SizedBox(height: 16),
 
-          // 3. Historical Trends Section with Chart Switcher
-          _buildHistoricalChartsCard(),
-          const SizedBox(height: 16),
+        // 3. Historical Trends Section with Chart Switcher
+        _buildHistoricalChartsCard(),
+        const SizedBox(height: 16),
 
-          // 4. Vitals Grid (Heart Rate, Blood Pressure, SpO2)
-          _buildVitalsCard(telemetry, isMeasuring),
-          const SizedBox(height: 24),
-        ],
-      ),
+        // 4. Vitals Grid (Heart Rate, Blood Pressure, SpO2)
+        _buildVitalsCard(telemetry, isMeasuring),
+        const SizedBox(height: 24),
+      ],
     );
   }
 
