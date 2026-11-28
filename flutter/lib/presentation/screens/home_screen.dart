@@ -4,6 +4,7 @@ import '../../core/l10n/app_strings.dart';
 import '../../services/ble_service.dart';
 import '../dialogs/connect_device_modal.dart';
 import '../dialogs/app_update_dialog.dart';
+import 'camera_shutter_screen.dart';
 import 'dial_studio_screen.dart';
 import 'tabs/health_tab.dart';
 import 'tabs/reminders_tab.dart';
@@ -26,14 +27,26 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _bleService = BleService();
     _bleService.addListener(_onServiceUpdate);
+    _bleService.watchCameraOpenRequested.addListener(_onWatchCameraRequested);
   }
 
   void _onServiceUpdate() {
     if (mounted) setState(() {});
   }
 
+  void _onWatchCameraRequested() {
+    if (!mounted || !_bleService.watchCameraOpenRequested.value) return;
+    _bleService.watchCameraOpenRequested.value = false;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CameraShutterScreen(bleService: _bleService),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _bleService.watchCameraOpenRequested.removeListener(_onWatchCameraRequested);
     _bleService.removeListener(_onServiceUpdate);
     _bleService.dispose();
     super.dispose();

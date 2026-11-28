@@ -16,6 +16,7 @@ import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.MediaStore
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.telecom.TelecomManager
@@ -203,6 +204,35 @@ class MainActivity : FlutterActivity() {
                     val action = call.argument<String>("action") ?: ""
                     handleMediaAction(action)
                     result.success(true)
+                }
+                "openCamera" -> {
+                    try {
+                        val intent = Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        if (intent.resolveActivity(packageManager) != null) {
+                            startActivity(intent)
+                        } else {
+                            val fallback = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            startActivity(fallback)
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("CAMERA_ERROR", e.message, null)
+                    }
+                }
+                "triggerCameraShutter" -> {
+                    try {
+                        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                        if (audioManager != null) {
+                            dispatchMediaKey(audioManager, KeyEvent.KEYCODE_VOLUME_UP)
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SHUTTER_ERROR", e.message, null)
+                    }
                 }
                 "getLastKnownLocation" -> {
                     val fineGranted = ContextCompat.checkSelfPermission(

@@ -338,6 +338,14 @@ void main() {
       expect(callPkt[8], equals(0x04));
       expect(callPkt[10], equals(0x01)); // TYPE_TELEPHONE_COMING
       expect(HtsmartProtocol.stripUnsupportedChars('Pedha Rayudu🫡'), equals('Pedha Rayudu'));
+
+      final camEnter = HtsmartProtocol.buildCameraStatusPacket(true);
+      expect(camEnter[8], equals(0x07));
+      expect(camEnter[10], equals(0x02));
+      expect(camEnter.sublist(13), equals([0x00]));
+
+      final camExit = HtsmartProtocol.buildCameraStatusPacket(false);
+      expect(camExit.sublist(13), equals([0x01]));
     });
   });
 

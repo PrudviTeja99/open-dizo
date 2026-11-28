@@ -12,6 +12,7 @@ import '../../../services/ble_service.dart';
 import '../../dialogs/connect_device_modal.dart';
 import '../../dialogs/app_update_dialog.dart';
 import '../../widgets/ble_log_card.dart';
+import '../camera_shutter_screen.dart';
 
 /// Device & Settings Tab: Watch Controls, Notification & Call Hub, Display, Preferences & Maintenance
 class DeviceSettingsTab extends StatefulWidget {
@@ -309,6 +310,19 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.camera_alt_rounded, size: 18, color: AppTheme.accent),
+              label: const Text('Remote Camera Shutter', style: TextStyle(fontSize: 12)),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => CameraShutterScreen(bleService: widget.bleService),
+                ),
+              ),
+            ),
           ),
           if (!kIsWeb && Platform.isAndroid) ...[
             const Divider(height: 22, color: AppTheme.borderSubtle),

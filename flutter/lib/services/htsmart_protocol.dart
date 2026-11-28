@@ -898,4 +898,15 @@ class HtsmartProtocol {
       seq: seq,
     );
   }
+
+  /// Enters or exits Remote Camera Shutter mode on the watch (Cmd 0x07, Key 0x02)
+  /// Payload: [0x00] to enter camera mode, [0x01] to exit camera mode
+  static List<int> buildCameraStatusPacket(bool enabled, {int seq = 1}) {
+    return buildPacket(
+      cmdId: 0x07,
+      keyId: 0x02,
+      payload: [enabled ? 0x00 : 0x01],
+      seq: seq,
+    );
+  }
 }

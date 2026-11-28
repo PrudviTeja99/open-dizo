@@ -50,6 +50,8 @@ class BleService extends ChangeNotifier {
   bool _isSyncingWeather = false;
   bool _isFindingPhone = false;
   bool _useExtNewNotificationFormat = true;
+  final ValueNotifier<int> cameraShutterCount = ValueNotifier<int>(0);
+  final ValueNotifier<bool> watchCameraOpenRequested = ValueNotifier<bool>(false);
 
   // Frame reassembly buffer for incoming multi-packet BLE notification frames
   final List<int> _rxAssemblyBuffer = [];
@@ -988,6 +990,26 @@ class BleService extends ChangeNotifier {
       return;
     }
 
+    // 14. Watch Remote Camera Shutter events: Cmd 0x07, Key 0x01 / 0x04 / 0x05
+    if (cmdId == 0x07 && keyId == 0x01) {
+      cameraShutterCount.value = cameraShutterCount.value + 1;
+      log('Watch triggered Camera Shutter (#${cameraShutterCount.value})', type: LogType.info);
+      if (!kIsWeb && Platform.isAndroid) {
+        _notifMethodChannel.invokeMethod('triggerCameraShutter');
+      }
+      return;
+    }
+    if (cmdId == 0x07 && keyId == 0x04) {
+      watchCameraOpenRequested.value = true;
+      log('Watch entered Camera mode', type: LogType.info);
+      return;
+    }
+    if (cmdId == 0x07 && keyId == 0x05) {
+      watchCameraOpenRequested.value = false;
+      log('Watch exited Camera mode', type: LogType.info);
+      return;
+    }
+
     log('Unhandled packet: Cmd 0x${cmdId.toRadixString(16)}, Key 0x${keyId.toRadixString(16)} (${keyData.length}B)', type: LogType.info);
   }
 
@@ -1541,6 +1563,12 @@ class BleService extends ChangeNotifier {
     log('Triggering watch vibration alert...');
     final packet = HtsmartProtocol.buildFindWatchPacket();
     await writeFF02(packet, 'Find Watch (Vibrate)');
+  }
+
+  Future<void> setCameraMode(bool enabled) async {
+    if (!_isConnected) return;
+    final packet = HtsmartProtocol.buildCameraStatusPacket(enabled, seq: _nextSeq());
+    await writeFF02(packet, enabled ? 'Enter Watch Camera Mode' : 'Exit Watch Camera Mode');
   }
 
   Future<void> restartWatch() async {
