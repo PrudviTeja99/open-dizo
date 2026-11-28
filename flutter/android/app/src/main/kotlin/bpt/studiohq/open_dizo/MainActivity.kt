@@ -355,8 +355,9 @@ class MainActivity : FlutterActivity() {
 
     @Suppress("DEPRECATION")
     private fun muteIncomingCall(): Boolean {
-        var muted = false
-        // 1. Try TelecomManager.silenceRinger() in its own try/catch (throws SecurityException on some OEMs)
+        var silenced = false
+        // Silence ONLY the current incoming call ringer without muting the phone's ringer volume.
+        // 1. TelecomManager.silenceRinger() silences the active incoming call cleanly.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 val hasPerm = ContextCompat.checkSelfPermission(
@@ -366,43 +367,21 @@ class MainActivity : FlutterActivity() {
                 if (hasPerm) {
                     val telecom = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
                     telecom?.silenceRinger()
-                    muted = true
+                    silenced = true
                 }
             } catch (_: Exception) {
             }
         }
-        // 2. Simulate Volume Down key press — Android's InCallUI silences the ringer on volume key press
+        // 2. Dispatch KEYCODE_VOLUME_DOWN — Android InCallUI silences only the current ring
+        //    without permanently muting STREAM_RING for future calls.
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         if (audioManager != null) {
             try {
                 dispatchMediaKey(audioManager, KeyEvent.KEYCODE_VOLUME_DOWN)
-                muted = true
-            } catch (_: Exception) {
-            }
-            // 3. Also lower/mute STREAM_RING directly
-            try {
-                audioManager.adjustStreamVolume(
-                    AudioManager.STREAM_RING,
-                    AudioManager.ADJUST_MUTE,
-                    0
-                )
-                muted = true
-            } catch (_: SecurityException) {
-                try {
-                    val current = audioManager.getStreamVolume(AudioManager.STREAM_RING)
-                    for (i in 0 until current) {
-                        audioManager.adjustStreamVolume(
-                            AudioManager.STREAM_RING,
-                            AudioManager.ADJUST_LOWER,
-                            0
-                        )
-                    }
-                    muted = true
-                } catch (_: Exception) {
-                }
+                silenced = true
             } catch (_: Exception) {
             }
         }
-        return muted
+        return silenced
     }
 }
