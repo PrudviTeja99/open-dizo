@@ -609,6 +609,20 @@ class HtsmartProtocol {
     );
   }
 
+  /// Strips 4-byte UTF-8 emojis, variation selectors, and zero-width joiners
+  /// that the watch's bitmap font renderer cannot display.
+  static String stripUnsupportedChars(String input) {
+    final buffer = StringBuffer();
+    for (final rune in input.runes) {
+      // Skip supplementary plane emojis (>= U+10000), variation selectors (FE00-FE0F), ZWJ (200D)
+      if (rune >= 0x10000 || (rune >= 0xFE00 && rune <= 0xFE0F) || rune == 0x200D) {
+        continue;
+      }
+      buffer.writeCharCode(rune);
+    }
+    return buffer.toString().trim();
+  }
+
   /// Builds an App Notification Push packet (Cmd 0x04, Key = type)
   /// Types: 1=Phone coming, 2=Phone answered, 3=Phone reject, 4=SMS, 12=WhatsApp, 18=Telegram, 0xFF=Others
   static List<int> buildNotificationPushPacket({
@@ -618,8 +632,10 @@ class HtsmartProtocol {
     bool useExtendedFormat = true,
     int seq = 1,
   }) {
-    final nameBytes = utf8.encode(name);
-    final contentBytes = utf8.encode(content);
+    final cleanName = stripUnsupportedChars(name);
+    final cleanContent = stripUnsupportedChars(content);
+    final nameBytes = utf8.encode(cleanName);
+    final contentBytes = utf8.encode(cleanContent);
     final List<int> keyData;
 
     if (useExtendedFormat) {

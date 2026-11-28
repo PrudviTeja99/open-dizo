@@ -116,12 +116,20 @@ class DizoNotificationListenerService : NotificationListenerService() {
             pkg.contains("truecaller")
         if (isCallCategory || isDialerPkg) {
             val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
+            val lowerTitle = title.lowercase()
             val lowerText = text.lowercase()
+            val isGenericTitle = title.isEmpty() ||
+                lowerTitle == "incoming call" ||
+                lowerTitle == "call" ||
+                lowerTitle == "calling" ||
+                lowerTitle.contains("ongoing call")
             val isIncoming = lowerText.contains("incoming") ||
                 lowerText.contains("calling") ||
                 lowerText.contains("ringing") ||
                 isCallCategory
-            if (isIncoming && title.isNotEmpty()) {
+            // Only emit from NotificationListener if we have a real caller name/number
+            // (prevents overwriting or beating PhoneCallReceiver with a generic "Incoming Call" title).
+            if (isIncoming && !isGenericTitle) {
                 val now = System.currentTimeMillis()
                 if (now - lastCallNotifTime > 3000L) {
                     lastCallNotifTime = now

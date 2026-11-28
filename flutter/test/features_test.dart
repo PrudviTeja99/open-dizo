@@ -332,11 +332,12 @@ void main() {
       expect(notifLegacy[13 + 21], equals(11));
 
       final callPkt = HtsmartProtocol.buildIncomingCallPacket(
-        callerName: 'Bob',
+        callerName: 'Bob🫡',
         phoneNumber: '+919876543210',
       );
       expect(callPkt[8], equals(0x04));
       expect(callPkt[10], equals(0x01)); // TYPE_TELEPHONE_COMING
+      expect(HtsmartProtocol.stripUnsupportedChars('Pedha Rayudu🫡'), equals('Pedha Rayudu'));
     });
   });
 
