@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/watch_alarm.dart';
 import '../../../models/watch_settings.dart';
@@ -26,7 +27,7 @@ class _RemindersTabState extends State<RemindersTab> {
       children: [
         // 1. Alarms Section
         _buildSectionHeader(
-          title: 'Watch Alarms',
+          title: AppStrings.t('watch_alarms'),
           subtitle: '${alarms.length} of 8 configured',
           action: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
@@ -34,7 +35,7 @@ class _RemindersTabState extends State<RemindersTab> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('Add Alarm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            label: Text(AppStrings.t('add_alarm'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
             onPressed: alarms.length >= 8 ? null : () => _showAddOrEditAlarmDialog(),
           ),
         ),
@@ -49,7 +50,7 @@ class _RemindersTabState extends State<RemindersTab> {
 
         // 2. Sedentary Inactivity Reminder Section
         _buildSectionHeader(
-          title: 'Sedentary Inactivity Alert',
+          title: AppStrings.t('sedentary_alert'),
           subtitle: 'Vibrates when inactive for prolonged periods',
         ),
         const SizedBox(height: 12),
@@ -59,7 +60,7 @@ class _RemindersTabState extends State<RemindersTab> {
 
         // 3. Drink Water Reminder Section
         _buildSectionHeader(
-          title: 'Hydration Reminder',
+          title: AppStrings.t('hydration_reminder'),
           subtitle: 'Scheduled water intake alerts throughout the day',
         ),
         const SizedBox(height: 12),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/ble_service.dart';
 import '../../dialogs/connect_device_modal.dart';
@@ -100,13 +101,13 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
         ? AppTheme.success
         : (isConnecting ? AppTheme.accent : AppTheme.textMuted);
     final statusTitle = isConnected
-        ? 'DIZO Watch D Active'
-        : (isConnecting ? 'Connecting to Watch...' : 'Disconnected');
+        ? AppStrings.t('watch_active')
+        : (isConnecting ? AppStrings.t('connecting_watch') : AppStrings.t('disconnected'));
     final statusSubtitle = isConnecting
-        ? 'Establishing BLE connection...'
+        ? AppStrings.t('connecting')
         : (lastSync != null
             ? 'Synced ${DateFormat('hh:mm a').format(lastSync)}'
-            : (isConnected ? 'Ready to sync' : 'Tap to reconnect'));
+            : (isConnected ? AppStrings.t('ready_to_sync') : AppStrings.t('tap_to_reconnect')));
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -245,9 +246,9 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Daily Activity',
-                style: TextStyle(
+              Text(
+                AppStrings.t('daily_activity'),
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textPrimary,
@@ -317,7 +318,7 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                     _buildStatRow(
                       icon: Icons.place_rounded,
                       iconColor: AppTheme.accent,
-                      label: 'Distance',
+                      label: AppStrings.t('distance'),
                       value: distKm.toStringAsFixed(2),
                       unit: 'km',
                     ),
@@ -382,9 +383,9 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Weekly Analytics',
-                    style: TextStyle(
+                  Text(
+                    AppStrings.t('weekly_analytics'),
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary,
@@ -418,9 +419,9 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                 ),
                 child: Row(
                   children: [
-                    _buildChartTabPill(0, 'Steps'),
-                    _buildChartTabPill(1, 'Heart Rate'),
-                    _buildChartTabPill(2, 'Sleep'),
+                    _buildChartTabPill(0, AppStrings.t('steps')),
+                    _buildChartTabPill(1, AppStrings.t('heart_rate')),
+                    _buildChartTabPill(2, AppStrings.t('sleep')),
                   ],
                 ),
               ),
@@ -494,9 +495,9 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Live Health Vitals',
-                style: TextStyle(
+              Text(
+                AppStrings.t('live_vitals'),
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textPrimary,
@@ -514,7 +515,7 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                   size: 18,
                 ),
                 label: Text(
-                  isMeasuring ? 'Measuring...' : 'Measure Vitals',
+                  isMeasuring ? AppStrings.t('measuring') : AppStrings.t('measure_vitals'),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 ),
                 onPressed: () {
@@ -534,7 +535,7 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                 child: _buildVitalTile(
                   icon: Icons.favorite_rounded,
                   iconColor: AppTheme.heartRate,
-                  label: 'Heart Rate',
+                  label: AppStrings.t('heart_rate'),
                   value: hr > 0 ? '$hr' : '--',
                   unit: 'BPM',
                   badge: hr > 0 ? (hr < 100 ? 'Normal' : 'Elevated') : null,
@@ -545,7 +546,7 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                 child: _buildVitalTile(
                   icon: Icons.bloodtype_rounded,
                   iconColor: AppTheme.bloodPressure,
-                  label: 'Blood Pressure',
+                  label: AppStrings.t('blood_pressure'),
                   value: (sbp > 0 && dbp > 0) ? '$sbp/$dbp' : '--/--',
                   unit: 'mmHg',
                   badge: (sbp > 0 && dbp > 0) ? 'Optimal' : null,
@@ -556,7 +557,7 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                 child: _buildVitalTile(
                   icon: Icons.water_drop_rounded,
                   iconColor: AppTheme.spo2,
-                  label: 'Blood Oxygen',
+                  label: AppStrings.t('blood_oxygen'),
                   value: spo2 > 0 ? '$spo2%' : '--',
                   unit: 'SpO2',
                   badge: spo2 >= 95 ? 'Good' : (spo2 > 0 ? 'Low' : null),

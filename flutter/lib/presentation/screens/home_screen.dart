@@ -128,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(width: 6),
                     Text(
                       _bleService.isConnecting
-                          ? 'Connecting...'
+                          ? AppStrings.t('connecting')
                           : (isConnected ? AppStrings.t('connected') : AppStrings.t('offline')),
                       style: TextStyle(
                         fontSize: 11,

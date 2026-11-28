@@ -156,7 +156,7 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
         const SizedBox(height: 20),
 
         // 11. BLE Logs & Export
-        _buildSectionHeader('BLE Logs', 'Copy or export live watch packet logs'),
+        _buildSectionHeader(AppStrings.t('ble_logs'), 'Copy or export live watch packet logs'),
         const SizedBox(height: 12),
         BleLogCard(
           logs: widget.bleService.logs,

@@ -358,6 +358,14 @@ void main() {
       AppStrings.setLanguage(AppLanguage.hindi);
       expect(AppStrings.t('steps'), equals('कदम'));
 
+      // Verify all 10 supported languages resolve core keys without falling back to raw key
+      for (final lang in AppLanguage.values) {
+        AppStrings.setLanguage(lang);
+        expect(AppStrings.t('tab_health'), isNot(equals('tab_health')));
+        expect(AppStrings.t('steps'), isNot(equals('steps')));
+        expect(AppStrings.t('ble_logs'), isNot(equals('ble_logs')));
+      }
+
       // Reset to English
       AppStrings.setLanguage(AppLanguage.english);
       expect(AppStrings.t('steps'), equals('Steps'));
