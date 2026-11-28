@@ -47,6 +47,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
 
   bool _isLoading = true;
   bool _isDraggingClock = false;
+  int _activeEditorTab = 0; // 0 = Background, 1 = Style, 2 = Color & Layout
 
   final List<Color> _availableColors = const [
     Colors.white,
@@ -367,18 +368,20 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(
-              child: ListView(
-                physics: _isDraggingClock
-                    ? const NeverScrollableScrollPhysics()
-                    : const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            // 1. Pinned Live Watch Preview (always visible while editing!)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              decoration: const BoxDecoration(
+                color: AppTheme.background,
+                border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
+              ),
+              child: Column(
                 children: [
-                  // Live Watch Frame Preview (Hold to vibrate and drag)
                   WatchCanvasPreview(
                     wallpaperFile: currentWallpaperFile,
                     clockStyle: _clockStyle,
-                    scale: 0.95,
+                    scale: 0.82,
                     onDragStateChanged: (dragging) => setState(() => _isDraggingClock = dragging),
                     onClockDragged: (newX, newY) => setState(() {
                       _clockStyle = _clockStyle.copyWith(
@@ -386,542 +389,56 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                       );
                     }),
                   ),
-                  const SizedBox(height: 20),
-
-                  // Section 1: Wallpaper Library & Custom Picker
-                  _buildSectionHeader('🖼️  WALLPAPER'),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 92,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        // Pick New Photo Tile
-                        GestureDetector(
-                          onTap: _pickNewWallpaper,
-                          child: Container(
-                            width: 76,
-                            margin: const EdgeInsets.only(right: 12),
-                            decoration: BoxDecoration(
-                              color: AppTheme.surfaceLight,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppTheme.accent.withValues(alpha: 0.5), width: 1.5),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.add_photo_alternate_outlined, color: AppTheme.accent, size: 28),
-                                const SizedBox(height: 4),
-                                const Text('New', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // Saved Wallpapers History Carousel
-                        ..._storageService.items.map((item) {
-                          final isSelected = _selectedWallpaper?.id == item.id;
-                          return GestureDetector(
-                            onTap: () => setState(() => _selectedWallpaper = item),
-                            onLongPress: () => _confirmDeleteWallpaper(item),
-                            child: Container(
-                              width: 76,
-                              margin: const EdgeInsets.only(right: 12),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isSelected ? AppTheme.accent : AppTheme.border,
-                                  width: isSelected ? 3 : 1,
-                                ),
-                              ),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(11),
-                                    child: Image.file(
-                                      File(item.filePath),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                  if (isSelected)
-                                    Positioned(
-                                      top: 4,
-                                      right: 4,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: const BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: AppTheme.accent,
-                                        ),
-                                        child: const Icon(Icons.check, size: 14, color: Colors.white),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _clockStyle.isVisible
+                        ? 'Hold & drag clock on preview to reposition'
+                        : 'Wallpaper-only mode (clock hidden)',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
                   ),
-                  const SizedBox(height: 20),
-
-                  // Section 2: Clock Styles Carousel (disabled when clock is hidden)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildSectionHeader('🎨  CLOCK STYLES'),
-                      if (!_clockStyle.isVisible)
-                        const Text(
-                          'Clock disabled',
-                          style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontStyle: FontStyle.italic),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  AnimatedOpacity(
-                    opacity: _clockStyle.isVisible ? 1.0 : 0.35,
-                    duration: const Duration(milliseconds: 200),
-                    child: IgnorePointer(
-                      ignoring: !_clockStyle.isVisible,
-                      child: SizedBox(
-                        height: 114,
-                        child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: ClockTemplateStyle.gallery.map((style) {
-                        final isSelected = _clockStyle.templateStyle.id == style.id;
-                        return GestureDetector(
-                          onTap: () => setState(() {
-                            final bool wasVertical = _clockStyle.isVertical;
-                            final bool willBeVertical = style.isStacked;
-                            _clockStyle = _clockStyle.copyWith(
-                              templateStyle: style,
-                              textColor: style.primaryColor,
-                              isStacked: willBeVertical,
-                            );
-                            if (wasVertical != willBeVertical && !_clockStyle.position.isCustom) {
-                              _clockStyle = _clockStyle.copyWith(
-                                position: ClockPosition.getPresets(isVertical: willBeVertical).first,
-                              );
-                            }
-                          }),
-                          child: Container(
-                            width: 96,
-                            margin: const EdgeInsets.only(right: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF161622),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: isSelected ? AppTheme.accent : AppTheme.border,
-                                width: isSelected ? 2.5 : 1,
-                              ),
-                              boxShadow: isSelected
-                                  ? [
-                                      BoxShadow(
-                                        color: AppTheme.accent.withValues(alpha: 0.35),
-                                        blurRadius: 8,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.center,
-                                      children: [
-                                        // Miniature Preview Box
-                                        Container(
-                                          height: 44,
-                                          width: style.isStacked ? 38 : 68,
-                                          decoration: BoxDecoration(
-                                            color: Colors.black.withValues(alpha: 0.6),
-                                            borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(
-                                              color: style.primaryColor.withValues(alpha: 0.45),
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Center(
-                                            child: style.isStacked
-                                                ? Column(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                                    children: [
-                                                      Text(
-                                                        '10',
-                                                        style: _getMiniatureStyle(style, isHour: true),
-                                                      ),
-                                                      Text(
-                                                        '08',
-                                                        style: _getMiniatureStyle(style, isHour: false),
-                                                      ),
-                                                    ],
-                                                  )
-                                                : Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Text('10', style: _getMiniatureStyle(style, isHour: true)),
-                                                      Text(':', style: _getMiniatureStyle(style, isHour: true)),
-                                                      Text('08', style: _getMiniatureStyle(style, isHour: false)),
-                                                    ],
-                                                  ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          style.name,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                            color: isSelected ? Colors.white : Colors.grey[400],
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Text(
-                                          style.subtitle.split(' • ').first,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            color: Colors.grey[500],
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                if (isSelected)
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: const BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: AppTheme.accent,
-                                      ),
-                                      child: const Icon(Icons.check, size: 12, color: Colors.white),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Section 3: Clock Display & Customization
-                  _buildSectionHeader('⏰  CLOCK & COMPLICATIONS'),
-                  const SizedBox(height: 10),
-
-                  // Clock Visibility Switch Tile
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceLight,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: SwitchListTile(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      title: const Text(
-                        'Show Clock on Dial',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                      ),
-                      subtitle: Text(
-                        _clockStyle.isVisible
-                            ? 'Clock is active (drag preview to move freely)'
-                            : 'Clock removed (clean wallpaper only)',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                      ),
-                      value: _clockStyle.isVisible,
-                      activeThumbColor: AppTheme.accent,
-                      onChanged: (val) => setState(() {
-                        _clockStyle = _clockStyle.copyWith(isVisible: val);
-                      }),
-                    ),
-                  ),
-
-                  if (_clockStyle.isVisible) ...[
-                    const SizedBox(height: 14),
-
-                    // Clock Layout Orientation Chips (Horizontal 120x73 vs Vertical 78x126)
-                    Row(
-                      children: [
-                        Text(
-                          'Layout: ',
-                          style: TextStyle(fontSize: 13, color: Colors.grey[400], fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(width: 8),
-                        ChoiceChip(
-                          label: const Text('⬌ Horizontal (120×73)'),
-                          selected: !_clockStyle.isStacked,
-                          selectedColor: AppTheme.accent,
-                          labelStyle: TextStyle(
-                            color: !_clockStyle.isStacked ? Colors.white : Colors.grey[400],
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                          onSelected: (_) => setState(() {
-                            if (_clockStyle.isStacked) {
-                              _clockStyle = _clockStyle.copyWith(
-                                isStacked: false,
-                                position: _clockStyle.position.isCustom
-                                    ? _clockStyle.position
-                                    : ClockPosition.getPresets(isVertical: false).first,
-                              );
-                            }
-                          }),
-                        ),
-                        const SizedBox(width: 8),
-                        ChoiceChip(
-                          label: const Text('⬍ Vertical (78×126)'),
-                          selected: _clockStyle.isStacked,
-                          selectedColor: AppTheme.accent,
-                          labelStyle: TextStyle(
-                            color: _clockStyle.isStacked ? Colors.white : Colors.grey[400],
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                          onSelected: (_) => setState(() {
-                            if (!_clockStyle.isStacked) {
-                              _clockStyle = _clockStyle.copyWith(
-                                isStacked: true,
-                                position: _clockStyle.position.isCustom
-                                    ? _clockStyle.position
-                                    : ClockPosition.getPresets(isVertical: true).first,
-                              );
-                            }
-                          }),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Clock Text Size Chips
-                    Row(
-                      children: [
-                        Text(
-                          'Size: ',
-                          style: TextStyle(fontSize: 13, color: Colors.grey[400], fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(width: 8),
-                        ...ClockSize.values.map((size) {
-                          final isSelected = _clockStyle.size == size;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(size.label),
-                              selected: isSelected,
-                              selectedColor: AppTheme.accent,
-                              labelStyle: TextStyle(
-                                color: isSelected ? Colors.white : Colors.grey[400],
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                              onSelected: (_) => setState(() {
-                                _clockStyle = _clockStyle.copyWith(size: size);
-                              }),
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Active Display Box Information
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.aspect_ratio_rounded, size: 16, color: AppTheme.accent),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Active Outer Box: ',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[400], fontWeight: FontWeight.w600),
-                          ),
-                          Text(
-                            _clockStyle.isVertical
-                                ? '78×126px Vertical Box (Full-Height Digits)'
-                                : '120×73px Horizontal Box (1:1 Accurate)',
-                            style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Clock Position Presets & Custom Coordinates
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          ...ClockPosition.getPresets(isVertical: _clockStyle.isVertical).map((pos) {
-                            final isSelected = !_clockStyle.position.isCustom &&
-                                _clockStyle.position.label == pos.label;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(pos.label),
-                                selected: isSelected,
-                                selectedColor: AppTheme.accent,
-                                labelStyle: TextStyle(
-                                  color: isSelected ? Colors.white : Colors.grey[400],
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                                onSelected: (_) => setState(() {
-                                  _clockStyle = _clockStyle.copyWith(
-                                    position: pos,
-                                  );
-                                  _isDraggingClock = false;
-                                }),
-                              ),
-                            );
-                          }),
-                          if (_clockStyle.position.isCustom)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text('Custom (${_clockStyle.position.x}, ${_clockStyle.position.y})'),
-                                selected: true,
-                                selectedColor: AppTheme.accent,
-                                labelStyle: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                                onSelected: (_) {},
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Icon(Icons.touch_app_outlined, size: 14, color: AppTheme.accent),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'Hold the clock until it vibrates to select and drag it freely.',
-                            style: TextStyle(fontSize: 11, color: Colors.grey[400]),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Section 3: Text & Accent Color
-                    _buildSectionHeader('🎨  TEXT COLOR'),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: _availableColors.map((color) {
-                        final isSelected = _clockStyle.textColor.toARGB32() == color.toARGB32();
-                        return GestureDetector(
-                          onTap: () => setState(() {
-                            _clockStyle = _clockStyle.copyWith(textColor: color);
-                          }),
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: color,
-                              border: Border.all(
-                                color: isSelected ? Colors.white : Colors.transparent,
-                                width: 3,
-                              ),
-                              boxShadow: isSelected
-                                  ? [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 8)]
-                                  : null,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Section 4: Complications & Widgets
-                    _buildSectionHeader('📅  DATE & DISPLAY'),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        FilterChip(
-                          label: const Text('📅 Show Date'),
-                          selected: _clockStyle.showDate,
-                          selectedColor: AppTheme.accent,
-                          labelStyle: TextStyle(
-                            color: _clockStyle.showDate ? Colors.black : Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          onSelected: (val) => setState(() {
-                            _clockStyle = _clockStyle.copyWith(showDate: val);
-                          }),
-                        ),
-                      ],
-                    ),
-                    if (_clockStyle.showDate) ...[
-                      const SizedBox(height: 14),
-                      Text(
-                        'Date Format Style:',
-                        style: TextStyle(fontSize: 13, color: Colors.grey[400], fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 38,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: DateStyle.values.map((ds) {
-                            final isSelected = _clockStyle.dateStyle == ds;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text('${ds.sample} (${ds.label})'),
-                                selected: isSelected,
-                                selectedColor: AppTheme.accent,
-                                labelStyle: TextStyle(
-                                  color: isSelected ? const Color(0xFF0A0C10) : Colors.grey[300],
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                                onSelected: (_) => setState(() {
-                                  _clockStyle = _clockStyle.copyWith(dateStyle: ds);
-                                }),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 30),
-                  ],
                 ],
               ),
             ),
 
-            // Bottom Action Bar
+            // 2. Clean 3-Tab Studio Editor Bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Row(
+                  children: [
+                    _buildEditorTabPill(0, Icons.photo_library_rounded, 'Background'),
+                    _buildEditorTabPill(1, Icons.watch_rounded, 'Clock Style'),
+                    _buildEditorTabPill(2, Icons.palette_rounded, 'Color & Layout'),
+                  ],
+                ),
+              ),
+            ),
+
+            // 3. Active Editor Panel (scrollable independently while preview stays pinned)
+            Expanded(
+              child: ListView(
+                physics: _isDraggingClock
+                    ? const NeverScrollableScrollPhysics()
+                    : const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                children: [
+                  if (_activeEditorTab == 0) _buildBackgroundEditorTab(),
+                  if (_activeEditorTab == 1) _buildClockStyleEditorTab(),
+                  if (_activeEditorTab == 2) _buildColorLayoutEditorTab(),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+
+            // 4. Bottom Action Bar
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: const BoxDecoration(
                 color: AppTheme.surface,
                 border: Border(top: BorderSide(color: AppTheme.border)),
@@ -946,13 +463,16 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
                     flex: 2,
                     child: ElevatedButton.icon(
                       onPressed: _confirmAndFlash,
-                      icon: const Icon(Icons.flash_on),
-                      label: const Text('Confirm & Flash'),
+                      icon: const Icon(Icons.flash_on_rounded),
+                      label: Text(
+                        widget.bleService.isConnected ? 'Apply to Watch' : 'Connect Watch to Apply',
+                      ),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
                         backgroundColor: AppTheme.accent,
                         foregroundColor: const Color(0xFF0A0C10),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                       ),
                     ),
                   ),
@@ -962,6 +482,491 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildEditorTabPill(int index, IconData icon, String label) {
+    final isSelected = _activeEditorTab == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _activeEditorTab = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isSelected ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackgroundEditorTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('WALLPAPER GALLERY'),
+        const SizedBox(height: 10),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 0.84,
+          ),
+          itemCount: _storageService.items.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return GestureDetector(
+                onTap: _pickNewWallpaper,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceLight,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppTheme.accent.withValues(alpha: 0.55),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_photo_alternate_rounded, color: AppTheme.accent, size: 26),
+                      SizedBox(height: 4),
+                      Text('Add Photo', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              );
+            }
+            final item = _storageService.items[index - 1];
+            final isSelected = _selectedWallpaper?.id == item.id;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedWallpaper = item),
+              onLongPress: () => _confirmDeleteWallpaper(item),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isSelected ? AppTheme.accent : AppTheme.border,
+                    width: isSelected ? 2.5 : 1,
+                  ),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(11),
+                      child: Image.file(File(item.filePath), fit: BoxFit.cover),
+                    ),
+                    if (isSelected)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.accent,
+                          ),
+                          child: const Icon(Icons.check, size: 12, color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Tip: Long-press any saved wallpaper to delete it.',
+          style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClockStyleEditorTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: SwitchListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            title: const Text(
+              'Show Clock on Dial',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            subtitle: Text(
+              _clockStyle.isVisible
+                  ? 'Customize typography, layout & size below'
+                  : 'Wallpaper only (no clock overlay)',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+            value: _clockStyle.isVisible,
+            activeThumbColor: AppTheme.accent,
+            onChanged: (val) => setState(() {
+              _clockStyle = _clockStyle.copyWith(isVisible: val);
+            }),
+          ),
+        ),
+        if (_clockStyle.isVisible) ...[
+          const SizedBox(height: 16),
+          _buildSectionHeader('TYPOGRAPHY'),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 106,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: ClockTemplateStyle.gallery.map((style) {
+                final isSelected = _clockStyle.templateStyle.id == style.id;
+                return GestureDetector(
+                  onTap: () => setState(() {
+                    final bool wasVertical = _clockStyle.isVertical;
+                    final bool willBeVertical = style.isStacked;
+                    _clockStyle = _clockStyle.copyWith(
+                      templateStyle: style,
+                      textColor: style.primaryColor,
+                      isStacked: willBeVertical,
+                    );
+                    if (wasVertical != willBeVertical && !_clockStyle.position.isCustom) {
+                      _clockStyle = _clockStyle.copyWith(
+                        position: ClockPosition.getPresets(isVertical: willBeVertical).first,
+                      );
+                    }
+                  }),
+                  child: Container(
+                    width: 92,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161622),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isSelected ? AppTheme.accent : AppTheme.border,
+                        width: isSelected ? 2.5 : 1,
+                      ),
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                height: 44,
+                                width: style.isStacked ? 38 : 64,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: style.primaryColor.withValues(alpha: 0.45),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: style.isStacked
+                                      ? Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text('10', style: _getMiniatureStyle(style, isHour: true)),
+                                            Text('08', style: _getMiniatureStyle(style, isHour: false)),
+                                          ],
+                                        )
+                                      : Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text('10', style: _getMiniatureStyle(style, isHour: true)),
+                                            Text(':', style: _getMiniatureStyle(style, isHour: true)),
+                                            Text('08', style: _getMiniatureStyle(style, isHour: false)),
+                                          ],
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                style.name,
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                  color: isSelected ? Colors.white : Colors.grey[400],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isSelected)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppTheme.accent,
+                              ),
+                              child: const Icon(Icons.check, size: 11, color: Colors.white),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Text('Orientation: ', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('Horizontal'),
+                selected: !_clockStyle.isStacked,
+                selectedColor: AppTheme.accent,
+                labelStyle: TextStyle(
+                  color: !_clockStyle.isStacked ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+                onSelected: (_) => setState(() {
+                  if (_clockStyle.isStacked) {
+                    _clockStyle = _clockStyle.copyWith(
+                      isStacked: false,
+                      position: _clockStyle.position.isCustom
+                          ? _clockStyle.position
+                          : ClockPosition.getPresets(isVertical: false).first,
+                    );
+                  }
+                }),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('Stacked'),
+                selected: _clockStyle.isStacked,
+                selectedColor: AppTheme.accent,
+                labelStyle: TextStyle(
+                  color: _clockStyle.isStacked ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+                onSelected: (_) => setState(() {
+                  if (!_clockStyle.isStacked) {
+                    _clockStyle = _clockStyle.copyWith(
+                      isStacked: true,
+                      position: _clockStyle.position.isCustom
+                          ? _clockStyle.position
+                          : ClockPosition.getPresets(isVertical: true).first,
+                    );
+                  }
+                }),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text('Size: ', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 8),
+              ...ClockSize.values.map((size) {
+                final isSelected = _clockStyle.size == size;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(size.label),
+                    selected: isSelected,
+                    selectedColor: AppTheme.accent,
+                    labelStyle: TextStyle(
+                      color: isSelected ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                    onSelected: (_) => setState(() {
+                      _clockStyle = _clockStyle.copyWith(size: size);
+                    }),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildColorLayoutEditorTab() {
+    if (!_clockStyle.isVisible) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: Text(
+            'Enable "Show Clock on Dial" in the Clock Style tab to customize color and layout.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('CLOCK COLOR'),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: _availableColors.map((color) {
+            final isSelected = _clockStyle.textColor.toARGB32() == color.toARGB32();
+            return GestureDetector(
+              onTap: () => setState(() {
+                _clockStyle = _clockStyle.copyWith(textColor: color);
+              }),
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  border: Border.all(
+                    color: isSelected ? Colors.white : AppTheme.border,
+                    width: isSelected ? 3 : 1,
+                  ),
+                  boxShadow: isSelected
+                      ? [BoxShadow(color: color.withValues(alpha: 0.55), blurRadius: 8)]
+                      : null,
+                ),
+                child: isSelected
+                    ? Icon(
+                        Icons.check,
+                        size: 16,
+                        color: color == Colors.white ? Colors.black : Colors.white,
+                      )
+                    : null,
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 18),
+        _buildSectionHeader('POSITION'),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              ...ClockPosition.getPresets(isVertical: _clockStyle.isVertical).map((pos) {
+                final isSelected = !_clockStyle.position.isCustom &&
+                    _clockStyle.position.label == pos.label;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(pos.label),
+                    selected: isSelected,
+                    selectedColor: AppTheme.accent,
+                    labelStyle: TextStyle(
+                      color: isSelected ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                    onSelected: (_) => setState(() {
+                      _clockStyle = _clockStyle.copyWith(position: pos);
+                      _isDraggingClock = false;
+                    }),
+                  ),
+                );
+              }),
+              if (_clockStyle.position.isCustom)
+                ChoiceChip(
+                  label: Text('Custom (${_clockStyle.position.x}, ${_clockStyle.position.y})'),
+                  selected: true,
+                  selectedColor: AppTheme.accent,
+                  labelStyle: const TextStyle(
+                    color: Color(0xFF0A0C10),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                  onSelected: (_) {},
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        _buildSectionHeader('DATE DISPLAY'),
+        const SizedBox(height: 10),
+        FilterChip(
+          label: const Text('Show Date'),
+          selected: _clockStyle.showDate,
+          selectedColor: AppTheme.accent,
+          labelStyle: TextStyle(
+            color: _clockStyle.showDate ? const Color(0xFF0A0C10) : Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+          onSelected: (val) => setState(() {
+            _clockStyle = _clockStyle.copyWith(showDate: val);
+          }),
+        ),
+        if (_clockStyle.showDate) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 38,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: DateStyle.values.map((ds) {
+                final isSelected = _clockStyle.dateStyle == ds;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text('${ds.sample} (${ds.label})'),
+                    selected: isSelected,
+                    selectedColor: AppTheme.accent,
+                    labelStyle: TextStyle(
+                      color: isSelected ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                    onSelected: (_) => setState(() {
+                      _clockStyle = _clockStyle.copyWith(dateStyle: ds);
+                    }),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
