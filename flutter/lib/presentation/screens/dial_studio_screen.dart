@@ -931,27 +931,105 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
           }),
         ),
         if (_clockStyle.showDate) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 38,
+            height: 92,
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: DateStyle.values.map((ds) {
                 final isSelected = _clockStyle.dateStyle == ds;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text('${ds.sample} (${ds.label})'),
-                    selected: isSelected,
-                    selectedColor: AppTheme.accent,
-                    labelStyle: TextStyle(
-                      color: isSelected ? const Color(0xFF0A0C10) : AppTheme.textSecondary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
+                final isPill = ds == DateStyle.pillBadge;
+                return GestureDetector(
+                  onTap: () => setState(() {
+                    _clockStyle = _clockStyle.copyWith(dateStyle: ds);
+                  }),
+                  child: Container(
+                    width: 100,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161622),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isSelected ? AppTheme.accent : AppTheme.border,
+                        width: isSelected ? 2.5 : 1,
+                      ),
                     ),
-                    onSelected: (_) => setState(() {
-                      _clockStyle = _clockStyle.copyWith(dateStyle: ds);
-                    }),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                height: 38,
+                                width: 80,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _clockStyle.textColor.withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Container(
+                                    padding: isPill
+                                        ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
+                                        : EdgeInsets.zero,
+                                    decoration: isPill
+                                        ? BoxDecoration(
+                                            color: _clockStyle.textColor.withValues(alpha: 0.18),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: _clockStyle.textColor.withValues(alpha: 0.4),
+                                            ),
+                                          )
+                                        : null,
+                                    child: Text(
+                                      ds.sample,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: _clockStyle.textColor,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                ds.label,
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                  color: isSelected ? Colors.white : Colors.grey[400],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isSelected)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppTheme.accent,
+                              ),
+                              child: const Icon(Icons.check, size: 11, color: Colors.white),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 );
               }).toList(),
