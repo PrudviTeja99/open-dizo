@@ -43,6 +43,7 @@ class BleService extends ChangeNotifier {
   List<WatchAlarm> _alarms = [];
   NotificationSettings _notificationSettings = const NotificationSettings();
   List<DailyHealthRecord> _weeklyHistory = [];
+  List<SportSession> _recentWorkouts = [];
   final Map<String, DailyHealthRecord> _persistedHistoryMap = {};
   final Map<int, List<int>> _historySyncBuffers = {};
   bool _hasSyncedRealHistory = false;
@@ -98,6 +99,7 @@ class BleService extends ChangeNotifier {
   List<WatchAlarm> get alarms => List.unmodifiable(_alarms);
   NotificationSettings get notificationSettings => _notificationSettings;
   List<DailyHealthRecord> get weeklyHistory => List.unmodifiable(_weeklyHistory);
+  List<SportSession> get recentWorkouts => List.unmodifiable(_recentWorkouts);
   bool get hasSyncedRealHistory => _hasSyncedRealHistory;
   WeatherSnapshot? get weather => _weather;
   bool get isSyncingWeather => _isSyncingWeather;
@@ -234,6 +236,15 @@ class BleService extends ChangeNotifier {
           if (_persistedHistoryMap.isNotEmpty) {
             _hasSyncedRealHistory = true;
           }
+        } catch (_) {}
+      }
+      final cachedWorkouts = prefs.getString('cached_workouts');
+      if (cachedWorkouts != null) {
+        try {
+          final List<dynamic> list = jsonDecode(cachedWorkouts);
+          _recentWorkouts = list
+              .map((e) => SportSession.fromJson(e as Map<String, dynamic>))
+              .toList();
         } catch (_) {}
       }
       _updateWeeklyHistory();
@@ -897,8 +908,8 @@ class BleService extends ChangeNotifier {
       return;
     }
 
-    // 6. Historical sync data stream chunks (Cmd 0x05, Key 0x02=Step, 0x03=Sleep, 0x04=HR, 0x05=SpO2)
-    if (cmdId == 0x05 && (keyId >= 0x02 && keyId <= 0x05)) {
+    // 6. Historical sync data stream chunks (Cmd 0x05, Key 0x02=Step, 0x03=Sleep, 0x04=HR, 0x05=SpO2, 0x10=Sport)
+    if (cmdId == 0x05 && ((keyId >= 0x02 && keyId <= 0x05) || keyId == 0x10)) {
       _historySyncBuffers.putIfAbsent(keyId, () => []).addAll(keyData);
       log('History chunk received (Key 0x${keyId.toRadixString(16)}, ${keyData.length}B)', type: LogType.data);
       return;
@@ -2057,12 +2068,58 @@ class BleService extends ChangeNotifier {
     _historySyncBuffers.clear();
     log('Pulling stored flash history from watch...');
 
-    // Request Steps (1), Sleep (2), Heart Rate (3), SpO2 (4)
-    for (final dataType in [1, 2, 3, 4]) {
+    // Request Steps (1), Sleep (2), Heart Rate (3), SpO2 (4), Sport (16)
+    for (final dataType in [1, 2, 3, 4, 16]) {
       final packet = HtsmartProtocol.buildSyncDataPacket(dataType, seq: _nextSeq());
       await writeFF02(packet, 'History Sync (type=$dataType)');
       await Future.delayed(const Duration(milliseconds: 250));
     }
+  }
+
+  Future<String?> exportHealthData({required String format}) async {
+    final records = _weeklyHistory;
+    final dir = await getTemporaryDirectory();
+    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final ext = format.toLowerCase() == 'json' ? 'json' : 'csv';
+    final file = File('${dir.path}/open_dizo_health_$ts.$ext');
+
+    if (ext == 'json') {
+      final payload = {
+        'exportedAt': DateTime.now().toIso8601String(),
+        'dailyRecords': records.map((r) => r.toJson()).toList(),
+        'workouts': _recentWorkouts.map((w) => w.toJson()).toList(),
+      };
+      await file.writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
+    } else {
+      final sb = StringBuffer();
+      sb.writeln(
+        'date,steps,goal_steps,calories_kcal,distance_km,avg_hr,max_hr,min_hr,sleep_min,deep_sleep_min,light_sleep_min,avg_spo2,sbp,dbp',
+      );
+      for (final r in records) {
+        sb.writeln(
+          '${_dateKey(r.date)},${r.steps},${r.goalSteps},${r.caloriesKcal},${r.distanceKm.toStringAsFixed(2)},${r.avgHeartRate},${r.maxHeartRate},${r.minHeartRate},${r.sleepMinutes},${r.deepSleepMinutes},${r.lightSleepMinutes},${r.avgSpo2},${r.sbp},${r.dbp}',
+        );
+      }
+      if (_recentWorkouts.isNotEmpty) {
+        sb.writeln('');
+        sb.writeln('workout_time,sport,duration_sec,steps,distance_km,calories_kcal,avg_hr');
+        for (final w in _recentWorkouts) {
+          sb.writeln(
+            '${w.timestamp.toIso8601String()},${w.sportName},${w.durationSeconds},${w.steps},${w.distanceKm.toStringAsFixed(2)},${w.caloriesKcal.toStringAsFixed(1)},${w.avgHeartRate}',
+          );
+        }
+      }
+      await file.writeAsString(sb.toString());
+    }
+
+    if (!kIsWeb && Platform.isAndroid) {
+      await _notifMethodChannel.invokeMethod('shareFile', {
+        'filePath': file.path,
+        'mimeType': ext == 'json' ? 'application/json' : 'text/csv',
+        'title': 'Export Open Dizo Health Data',
+      });
+    }
+    return file.path;
   }
 
   void _finalizeHistorySyncBuffers() {
@@ -2080,6 +2137,15 @@ class BleService extends ChangeNotifier {
     final spo2Days = _historySyncBuffers.containsKey(0x05)
         ? HistorySyncParser.parseSpo2Stream(_historySyncBuffers[0x05]!)
         : <DateTime, int>{};
+    if (_historySyncBuffers.containsKey(0x10)) {
+      final parsedWorkouts = HistorySyncParser.parseSportStream(_historySyncBuffers[0x10]!);
+      if (parsedWorkouts.isNotEmpty) {
+        _recentWorkouts = parsedWorkouts.take(20).toList();
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('cached_workouts', jsonEncode(_recentWorkouts.map((w) => w.toJson()).toList()));
+        });
+      }
+    }
 
     final allDates = <DateTime>{
       ...stepDays.keys,

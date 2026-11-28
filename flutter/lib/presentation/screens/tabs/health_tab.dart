@@ -91,6 +91,10 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
 
         // 4. Vitals Grid (Heart Rate, Blood Pressure, SpO2)
         _buildVitalsCard(telemetry, isMeasuring),
+        const SizedBox(height: 16),
+
+        // 5. Recent Workouts & Export
+        _buildWorkoutsCard(),
         const SizedBox(height: 24),
       ],
     );
@@ -620,6 +624,143 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
             '$label · $unit',
             style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkoutsCard() {
+    final workouts = widget.bleService.recentWorkouts;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Recent Workouts',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Export Health Data',
+                color: AppTheme.surfaceElevated,
+                onSelected: (format) async {
+                  try {
+                    final path = await widget.bleService.exportHealthData(format: format);
+                    if (mounted && path != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Exported $format to $path'), duration: const Duration(seconds: 2)),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Export failed: $e'), backgroundColor: AppTheme.heartRate),
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'csv', child: Text('Export as CSV')),
+                  PopupMenuItem(value: 'json', child: Text('Export as JSON')),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.borderSubtle),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.download_rounded, size: 15, color: AppTheme.accent),
+                      SizedBox(width: 5),
+                      Text(
+                        'Export',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.accent),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (workouts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'No workouts synced yet — connect your watch and sync to view exercise history.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+            )
+          else
+            ...workouts.take(5).map((w) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.borderSubtle),
+                ),
+                child: Row(
+                  children: [
+                    Text(w.sportEmoji, style: const TextStyle(fontSize: 22)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            w.sportName,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            DateFormat('MMM d, hh:mm a').format(w.timestamp),
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          w.formattedDuration,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                        Text(
+                          '${w.caloriesKcal.round()} kcal${w.distanceKm > 0 ? ' · ${w.distanceKm.toStringAsFixed(2)} km' : ''}',
+                          style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );

@@ -247,6 +247,27 @@ void main() {
       final spo2Days = HistorySyncParser.parseSpo2Stream(spo2Stream);
       expect(spo2Days[DateTime(2026, 11, 26)], equals(98));
     });
+
+    test('Parses Sport Stream into SportSession list', () {
+      final payload = [
+        0x00, 0x01, // itemCount = 1
+        b0, b1, b2, b3, // packed timestamp
+        0x00, 0x01, // interval
+        0x00, 0x05, // sportType = 5 (Outdoor Run)
+        0x07, 0x08, // duration = 1800s (30m)
+        0x0C, 0x80, // steps = 3200
+        0x09, 0xC4, // distance = 2500 -> 2.5 km
+        0x52, 0x08, // calories = 21000 -> 21.0 kcal
+        0x00, 0x00, // reserved
+      ];
+      final sessions = HistorySyncParser.parseSportStream(payload);
+      expect(sessions.length, equals(1));
+      expect(sessions.first.sportName, equals('Outdoor Run'));
+      expect(sessions.first.durationSeconds, equals(1800));
+      expect(sessions.first.formattedDuration, equals('30m'));
+      expect(sessions.first.steps, equals(3200));
+      expect(sessions.first.distanceKm, closeTo(2.5, 0.01));
+    });
   });
 
   group('Music Sync & Health Warning Thresholds Tests', () {
