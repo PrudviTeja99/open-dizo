@@ -27,9 +27,9 @@ class AppReleaseInfo {
 }
 
 class AppUpdateService {
-  static String _cachedVersion = '1.3.3';
+  static String _cachedVersion = '1.3.4';
 
-  /// Returns the currently installed application version (e.g. "1.3.3")
+  /// Returns the currently installed application version (e.g. "1.3.4")
   static String get currentVersion => _cachedVersion;
 
   /// Loads current version dynamically from platform package info

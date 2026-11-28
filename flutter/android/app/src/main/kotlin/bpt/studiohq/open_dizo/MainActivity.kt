@@ -1,6 +1,7 @@
 package bpt.studiohq.open_dizo
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -16,6 +17,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import android.telecom.TelecomManager
 import android.view.KeyEvent
 import androidx.core.app.ActivityCompat
@@ -33,6 +35,27 @@ class MainActivity : FlutterActivity() {
     private val NOTIF_METHOD_CHANNEL = "bpt.studiohq.open_dizo/notifications"
     private val NOTIF_EVENT_CHANNEL = "bpt.studiohq.open_dizo/notifications_stream"
     private var activeRingtone: Ringtone? = null
+
+    override fun onResume() {
+        super.onResume()
+        rebindNotificationListenerIfEnabled()
+    }
+
+    private fun rebindNotificationListenerIfEnabled() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val enabled = NotificationManagerCompat
+                    .getEnabledListenerPackages(this)
+                    .contains(packageName)
+                if (enabled) {
+                    NotificationListenerService.requestRebind(
+                        ComponentName(this, DizoNotificationListenerService::class.java)
+                    )
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -333,8 +356,9 @@ class MainActivity : FlutterActivity() {
     @Suppress("DEPRECATION")
     private fun muteIncomingCall(): Boolean {
         var muted = false
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        // 1. Try TelecomManager.silenceRinger() in its own try/catch (throws SecurityException on some OEMs)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
                 val hasPerm = ContextCompat.checkSelfPermission(
                     this,
                     Manifest.permission.READ_PHONE_STATE
@@ -344,19 +368,27 @@ class MainActivity : FlutterActivity() {
                     telecom?.silenceRinger()
                     muted = true
                 }
+            } catch (_: Exception) {
             }
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            if (audioManager != null) {
+        }
+        // 2. Simulate Volume Down key press — Android's InCallUI silences the ringer on volume key press
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (audioManager != null) {
+            try {
+                dispatchMediaKey(audioManager, KeyEvent.KEYCODE_VOLUME_DOWN)
+                muted = true
+            } catch (_: Exception) {
+            }
+            // 3. Also lower/mute STREAM_RING directly
+            try {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_RING,
+                    AudioManager.ADJUST_MUTE,
+                    0
+                )
+                muted = true
+            } catch (_: SecurityException) {
                 try {
-                    audioManager.adjustStreamVolume(
-                        AudioManager.STREAM_RING,
-                        AudioManager.ADJUST_MUTE,
-                        0
-                    )
-                    muted = true
-                } catch (_: SecurityException) {
-                    // Android 7+ throws SecurityException on ADJUST_MUTE without DND access;
-                    // step STREAM_RING volume down to 0 instead.
                     val current = audioManager.getStreamVolume(AudioManager.STREAM_RING)
                     for (i in 0 until current) {
                         audioManager.adjustStreamVolume(
@@ -366,9 +398,10 @@ class MainActivity : FlutterActivity() {
                         )
                     }
                     muted = true
+                } catch (_: Exception) {
                 }
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
         }
         return muted
     }
