@@ -368,66 +368,58 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // 1. Pinned Live Watch Preview (always visible while editing!)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              decoration: const BoxDecoration(
-                color: AppTheme.background,
-                border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
-              ),
-              child: Column(
-                children: [
-                  WatchCanvasPreview(
-                    wallpaperFile: currentWallpaperFile,
-                    clockStyle: _clockStyle,
-                    scale: 0.82,
-                    onDragStateChanged: (dragging) => setState(() => _isDraggingClock = dragging),
-                    onClockDragged: (newX, newY) => setState(() {
-                      _clockStyle = _clockStyle.copyWith(
-                        position: ClockPosition('Custom', newX, newY, isCustom: true),
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _clockStyle.isVisible
-                        ? 'Hold & drag clock on preview to reposition'
-                        : 'Wallpaper-only mode (clock hidden)',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                  ),
-                ],
-              ),
-            ),
-
-            // 2. Clean 3-Tab Studio Editor Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: AppTheme.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.border),
-                ),
-                child: Row(
-                  children: [
-                    _buildEditorTabPill(0, Icons.photo_library_rounded, 'Background'),
-                    _buildEditorTabPill(1, Icons.watch_rounded, 'Clock Style'),
-                    _buildEditorTabPill(2, Icons.palette_rounded, 'Color & Layout'),
-                  ],
-                ),
-              ),
-            ),
-
-            // 3. Active Editor Panel (scrollable independently while preview stays pinned)
+            // Full-page scrollable studio (preview + 3-tab editor scroll together smoothly)
             Expanded(
               child: ListView(
                 physics: _isDraggingClock
                     ? const NeverScrollableScrollPhysics()
                     : const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                 children: [
+                  // 1. Live Watch Preview
+                  Center(
+                    child: WatchCanvasPreview(
+                      wallpaperFile: currentWallpaperFile,
+                      clockStyle: _clockStyle,
+                      scale: 0.9,
+                      onDragStateChanged: (dragging) => setState(() => _isDraggingClock = dragging),
+                      onClockDragged: (newX, newY) => setState(() {
+                        _clockStyle = _clockStyle.copyWith(
+                          position: ClockPosition('Custom', newX, newY, isCustom: true),
+                        );
+                      }),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Center(
+                    child: Text(
+                      _clockStyle.isVisible
+                          ? 'Hold & drag clock on preview to reposition'
+                          : 'Wallpaper-only mode (clock hidden)',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 2. Clean 3-Tab Studio Editor Bar
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Row(
+                      children: [
+                        _buildEditorTabPill(0, Icons.photo_library_rounded, 'Background'),
+                        _buildEditorTabPill(1, Icons.watch_rounded, 'Clock Style'),
+                        _buildEditorTabPill(2, Icons.palette_rounded, 'Color & Layout'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 3. Active Editor Panel
                   if (_activeEditorTab == 0) _buildBackgroundEditorTab(),
                   if (_activeEditorTab == 1) _buildClockStyleEditorTab(),
                   if (_activeEditorTab == 2) _buildColorLayoutEditorTab(),
