@@ -164,26 +164,28 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
           scrollController: _logScrollController,
           onClear: widget.bleService.clearLogs,
           onCopy: () async {
+            final messenger = ScaffoldMessenger.of(context);
             final text = widget.bleService.formatLogsAsText();
             if (text.isEmpty) return;
             await Clipboard.setData(ClipboardData(text: text));
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              messenger.showSnackBar(
                 const SnackBar(content: Text('BLE logs copied to clipboard'), duration: Duration(seconds: 2)),
               );
             }
           },
           onExport: () async {
+            final messenger = ScaffoldMessenger.of(context);
             try {
               final path = await widget.bleService.exportLogs();
               if (mounted && path != null) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('Exported logs to $path'), duration: const Duration(seconds: 2)),
                 );
               }
             } catch (e) {
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('Log export failed: $e'), backgroundColor: AppTheme.heartRate),
                 );
               }

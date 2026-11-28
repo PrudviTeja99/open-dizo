@@ -71,7 +71,6 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
     final steps = telemetry.steps ?? 0;
     final calories = telemetry.calories ?? 0;
     final distKm = (telemetry.distanceMeters ?? 0.0) / 1000.0;
-    final sleepMins = (telemetry.deepSleepMinutes ?? 0) + (telemetry.lightSleepMinutes ?? 0);
     final targetSteps = widget.bleService.settings.targetSteps;
 
     return ListView(

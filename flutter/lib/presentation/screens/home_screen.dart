@@ -18,16 +18,24 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final BleService _bleService;
   int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _bleService = BleService();
     _bleService.addListener(_onServiceUpdate);
     _bleService.watchCameraOpenRequested.addListener(_onWatchCameraRequested);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _bleService.attemptAutoConnectIfNeeded();
+    }
   }
 
   void _onServiceUpdate() {
@@ -46,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _bleService.watchCameraOpenRequested.removeListener(_onWatchCameraRequested);
     _bleService.removeListener(_onServiceUpdate);
     _bleService.dispose();

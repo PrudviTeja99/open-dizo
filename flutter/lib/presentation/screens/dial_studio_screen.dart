@@ -969,7 +969,6 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
         base = GoogleFonts.shareTechMono(fontSize: 11, fontWeight: FontWeight.w700, height: 0.95);
         break;
       case ClockFontFamily.modern:
-      default:
         base = GoogleFonts.montserrat(fontSize: 11, fontWeight: FontWeight.w900, height: 0.95);
         break;
     }

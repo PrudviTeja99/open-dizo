@@ -257,6 +257,8 @@ class BleService extends ChangeNotifier {
     }
   }
 
+  Future<void> attemptAutoConnectIfNeeded() => _attemptAutoConnect();
+
   Future<void> _attemptAutoConnect() async {
     if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) return;
     final mac = _lastDeviceMac;
@@ -1291,6 +1293,22 @@ class BleService extends ChangeNotifier {
       _telemetry = _telemetry.copyWith(lastSyncTime: DateTime.now());
       await _saveTelemetry();
       log('All metrics updated ✓', type: LogType.success);
+
+      if (!isAuto && _settings.weatherEnabled) {
+        final stale = _weather == null ||
+            DateTime.now().difference(_weather!.fetchedAt).inMinutes >= 30;
+        if (stale) {
+          Future(() async {
+            try {
+              if (_settings.weatherUseGps) {
+                await syncWeatherFromGps();
+              } else {
+                await syncWeather();
+              }
+            } catch (_) {}
+          });
+        }
+      }
     } catch (e) {
       log('Sync error: $e', type: LogType.error);
     } finally {
