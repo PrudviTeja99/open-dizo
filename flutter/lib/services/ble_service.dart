@@ -236,8 +236,34 @@ class BleService extends ChangeNotifier {
       }
       _updateWeeklyHistory();
       notifyListeners();
+
+      // Auto-connect to the last paired watch on startup if permissions & Bluetooth are ready
+      _attemptAutoConnect();
     } catch (e) {
       debugPrint('[BleService] Error loading persisted data: $e');
+    }
+  }
+
+  Future<void> _attemptAutoConnect() async {
+    if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) return;
+    final mac = _lastDeviceMac;
+    if (mac == null || mac.isEmpty || _isConnected || _isConnecting) return;
+
+    try {
+      if (Platform.isAndroid) {
+        final btGranted = await Permission.bluetoothConnect.isGranted;
+        if (!btGranted) return;
+      }
+      final adapterState = await FlutterBluePlus.adapterState.first
+          .timeout(const Duration(seconds: 2));
+      if (adapterState != BluetoothAdapterState.on) {
+        log('Auto-connect skipped: Bluetooth is off', type: LogType.info);
+        return;
+      }
+      log('Auto-connecting to ${_lastDeviceName ?? mac}...', type: LogType.info);
+      await connectByMacAddress(mac, displayName: _lastDeviceName);
+    } catch (e) {
+      debugPrint('[BleService] Auto-connect skipped: $e');
     }
   }
 
