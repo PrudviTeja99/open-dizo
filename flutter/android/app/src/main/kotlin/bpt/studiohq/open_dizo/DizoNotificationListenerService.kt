@@ -14,6 +14,7 @@ class DizoNotificationListenerService : NotificationListenerService() {
     companion object {
         private var lastKey: String = ""
         private var lastTimestamp: Long = 0L
+        private var lastCallNotifTime: Long = 0L
     }
 
     private var mediaSessionManager: MediaSessionManager? = null
@@ -103,15 +104,38 @@ class DizoNotificationListenerService : NotificationListenerService() {
         if (pkg == applicationContext.packageName) return
 
         val notification = sbn.notification ?: return
+        val extras = notification.extras ?: return
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
+
+        // Detect incoming call notifications (e.g. Dialer, Google Phone, Truecaller, VoIP)
+        // before filtering ongoing flags so they trigger the watch Call Screen instead of a generic notification.
+        val isCallCategory = notification.category == Notification.CATEGORY_CALL
+        val isDialerPkg = pkg.contains("dialer") ||
+            pkg.contains("incallui") ||
+            pkg.contains("telecom") ||
+            pkg.contains("truecaller")
+        if (isCallCategory || isDialerPkg) {
+            val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
+            val lowerText = text.lowercase()
+            val isIncoming = lowerText.contains("incoming") ||
+                lowerText.contains("calling") ||
+                lowerText.contains("ringing") ||
+                isCallCategory
+            if (isIncoming && title.isNotEmpty()) {
+                val now = System.currentTimeMillis()
+                if (now - lastCallNotifTime > 3000L) {
+                    lastCallNotifTime = now
+                    NotificationBridge.sendCallRinging(title, text)
+                }
+            }
+            return
+        }
+
         // Skip ongoing background services and group summaries
         if ((notification.flags and Notification.FLAG_ONGOING_EVENT) != 0) return
         if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
 
-        val extras = notification.extras ?: return
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
-        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim()
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim()
-        val body = if (!bigText.isNullOrEmpty()) bigText else (text ?: "")
+        val body = extractFullNotificationBody(extras)
 
         if (title.isEmpty() && body.isEmpty()) return
 
@@ -125,5 +149,45 @@ class DizoNotificationListenerService : NotificationListenerService() {
         lastTimestamp = now
 
         NotificationBridge.sendNotification(pkg, title, body)
+    }
+
+    private fun extractFullNotificationBody(extras: android.os.Bundle): String {
+        // 1. MessagingStyle (WhatsApp, Telegram, Messages, etc.)
+        @Suppress("DEPRECATION")
+        val messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+        if (messages != null && messages.isNotEmpty()) {
+            val lines = messages.mapNotNull { item ->
+                val bundle = item as? android.os.Bundle ?: return@mapNotNull null
+                val msgText = bundle.getCharSequence("text")?.toString()?.trim()
+                if (msgText.isNullOrEmpty()) return@mapNotNull null
+                val sender = bundle.getCharSequence("sender")?.toString()?.trim()
+                if (!sender.isNullOrEmpty()) "$sender: $msgText" else msgText
+            }
+            if (lines.isNotEmpty()) {
+                return lines.joinToString("\n")
+            }
+        }
+
+        // 2. BigTextStyle (expanded notification body)
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim()
+        if (!bigText.isNullOrEmpty()) return bigText
+
+        // 3. InboxStyle (multiple lines, e.g. Gmail / grouped messages)
+        val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+        if (textLines != null && textLines.isNotEmpty()) {
+            val joined = textLines.mapNotNull { it?.toString()?.trim() }
+                .filter { it.isNotEmpty() }
+                .joinToString("\n")
+            if (joined.isNotEmpty()) return joined
+        }
+
+        // 4. Standard text / subtext fallback
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
+        val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim() ?: ""
+        return when {
+            text.isNotEmpty() -> text
+            subText.isNotEmpty() -> subText
+            else -> ""
+        }
     }
 }

@@ -665,22 +665,28 @@ class HtsmartProtocol {
   static List<int> buildIncomingCallPacket({
     required String callerName,
     required String phoneNumber,
+    bool useExtendedFormat = true,
     int seq = 1,
   }) {
     return buildNotificationPushPacket(
       type: 0x01, // TYPE_TELEPHONE_COMING
       name: callerName.isNotEmpty ? callerName : phoneNumber,
       content: phoneNumber.isNotEmpty ? phoneNumber : 'Incoming Call',
+      useExtendedFormat: useExtendedFormat,
       seq: seq,
     );
   }
 
   /// Sends a call ended / rejected packet to dismiss incoming call alert on the watch (Cmd 0x04, Key 0x03)
-  static List<int> buildEndCallPacket({int seq = 1}) {
+  static List<int> buildEndCallPacket({
+    bool useExtendedFormat = true,
+    int seq = 1,
+  }) {
     return buildNotificationPushPacket(
       type: 0x03, // TYPE_TELEPHONE_REJECT
       name: '',
       content: '',
+      useExtendedFormat: useExtendedFormat,
       seq: seq,
     );
   }

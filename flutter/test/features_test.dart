@@ -304,6 +304,40 @@ void main() {
       );
       expect(hindiPacket.sublist(13), equals([19, 0, 0, 0]));
     });
+
+    test('buildNotificationPushPacket and buildIncomingCallPacket encode body & call type', () {
+      final notifExt = HtsmartProtocol.buildNotificationPushPacket(
+        type: 12,
+        name: 'Alice',
+        content: 'Full message body line 1\nLine 2',
+        useExtendedFormat: true,
+      );
+      expect(notifExt[8], equals(0x04));
+      expect(notifExt[10], equals(12));
+      // keyData[0] = nameLen (5), followed by 'Alice', 2-byte contentLen (31), and body
+      expect(notifExt[13], equals(5));
+      expect(notifExt[19], equals(0));
+      expect(notifExt[20], equals(31));
+
+      final notifLegacy = HtsmartProtocol.buildNotificationPushPacket(
+        type: 12,
+        name: 'Alice',
+        content: 'Legacy body',
+        useExtendedFormat: false,
+      );
+      expect(notifLegacy[8], equals(0x04));
+      expect(notifLegacy[10], equals(12));
+      // Legacy format: 20-byte space-padded name, 2-byte contentLen (11) at offset 13+20
+      expect(notifLegacy[13 + 20], equals(0));
+      expect(notifLegacy[13 + 21], equals(11));
+
+      final callPkt = HtsmartProtocol.buildIncomingCallPacket(
+        callerName: 'Bob',
+        phoneNumber: '+919876543210',
+      );
+      expect(callPkt[8], equals(0x04));
+      expect(callPkt[10], equals(0x01)); // TYPE_TELEPHONE_COMING
+    });
   });
 
   group('Multi-Language & Apply Target Tests', () {

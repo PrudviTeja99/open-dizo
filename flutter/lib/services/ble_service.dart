@@ -48,6 +48,7 @@ class BleService extends ChangeNotifier {
   WeatherSnapshot? _weather;
   bool _isSyncingWeather = false;
   bool _isFindingPhone = false;
+  bool _useExtNewNotificationFormat = true;
 
   // Frame reassembly buffer for incoming multi-packet BLE notification frames
   final List<int> _rxAssemblyBuffer = [];
@@ -917,6 +918,24 @@ class BleService extends ChangeNotifier {
       }
       return;
     }
+
+    // 12. Watch declined / hung up incoming call: Cmd 0x04, Key 0x20 (32)
+    if (cmdId == 0x04 && keyId == 0x20) {
+      log('Watch requested Decline/End Call', type: LogType.info);
+      if (!kIsWeb && Platform.isAndroid) {
+        _notifMethodChannel.invokeMethod('endPhoneCall');
+      }
+      return;
+    }
+
+    // 13. Watch muted incoming call ringer: Cmd 0x02, Key 0x78 (120)
+    if (cmdId == 0x02 && keyId == 0x78) {
+      log('Watch requested Mute Call', type: LogType.info);
+      if (!kIsWeb && Platform.isAndroid) {
+        _notifMethodChannel.invokeMethod('mutePhoneCall');
+      }
+      return;
+    }
   }
 
   void _decodeLegacyTelemetry(List<int> data) {
@@ -995,6 +1014,11 @@ class BleService extends ChangeNotifier {
         final itemData = bArr.sublist(dataStart, dataStart + len);
 
         switch (type) {
+          case 17: // WristbandVersion (0x11)
+            if (itemData.length >= 37) {
+              _useExtNewNotificationFormat = (itemData[36] & 0x08) != 0;
+            }
+            break;
           case 122: // BrightnessVibrateConfig (0x7A)
             if (itemData.length >= 32) {
               _rawBrightnessVibrateConfig = List<int>.from(itemData);
@@ -1580,6 +1604,7 @@ class BleService extends ChangeNotifier {
       type: type,
       name: title,
       content: body,
+      useExtendedFormat: _useExtNewNotificationFormat,
       seq: _nextSeq(),
     );
     await writeFF02(packet, 'Push Notification ($title)');
@@ -1593,6 +1618,7 @@ class BleService extends ChangeNotifier {
     final packet = HtsmartProtocol.buildIncomingCallPacket(
       callerName: callerName,
       phoneNumber: phoneNumber,
+      useExtendedFormat: _useExtNewNotificationFormat,
       seq: _nextSeq(),
     );
     await writeFF02(packet, 'Incoming Call Alert ($callerName)');
@@ -1600,7 +1626,10 @@ class BleService extends ChangeNotifier {
 
   Future<void> dismissIncomingCallAlert() async {
     if (!_isConnected) return;
-    final packet = HtsmartProtocol.buildEndCallPacket(seq: _nextSeq());
+    final packet = HtsmartProtocol.buildEndCallPacket(
+      useExtendedFormat: _useExtNewNotificationFormat,
+      seq: _nextSeq(),
+    );
     await writeFF02(packet, 'Dismiss Call Alert');
   }
 
@@ -1698,7 +1727,11 @@ class BleService extends ChangeNotifier {
     if (pkg.contains('twitter')) {
       return _notificationSettings.twitter ? 8 : null;
     }
-    if (pkg.contains('dialer') || pkg.contains('telecom') || pkg.contains('incallui')) {
+    if (pkg.contains('dialer') ||
+        pkg.contains('telecom') ||
+        pkg.contains('incallui') ||
+        pkg.contains('truecaller') ||
+        pkg == 'com.android.phone') {
       return null;
     }
     return _notificationSettings.others ? 0xFF : null;

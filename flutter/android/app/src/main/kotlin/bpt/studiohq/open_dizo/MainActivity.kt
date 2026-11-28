@@ -16,6 +16,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.telecom.TelecomManager
 import android.view.KeyEvent
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -97,7 +98,21 @@ class MainActivity : FlutterActivity() {
                         this,
                         Manifest.permission.READ_CALL_LOG
                     ) == PackageManager.PERMISSION_GRANTED
-                    result.success(phoneGranted && callLogGranted)
+                    val answerGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        ContextCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.ANSWER_PHONE_CALLS
+                        ) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        true
+                    }
+                    result.success(phoneGranted && callLogGranted && answerGranted)
+                }
+                "endPhoneCall" -> {
+                    result.success(endIncomingCall())
+                }
+                "mutePhoneCall" -> {
+                    result.success(muteIncomingCall())
                 }
                 "startFindPhoneRing" -> {
                     startFindPhoneAlert()
@@ -248,5 +263,60 @@ class MainActivity : FlutterActivity() {
         val now = SystemClock.uptimeMillis()
         audioManager.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0))
         audioManager.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun endIncomingCall(): Boolean {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val hasPerm = ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ANSWER_PHONE_CALLS
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPerm) {
+                    val telecom = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+                    if (telecom != null && telecom.endCall()) {
+                        return true
+                    }
+                }
+            }
+            // Fallback for older devices or restricted OEMs
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager != null) {
+                dispatchMediaKey(audioManager, KeyEvent.KEYCODE_HEADSETHOOK)
+                return true
+            }
+        } catch (_: Exception) {
+        }
+        return false
+    }
+
+    @Suppress("DEPRECATION")
+    private fun muteIncomingCall(): Boolean {
+        var muted = false
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val hasPerm = ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_PHONE_STATE
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPerm) {
+                    val telecom = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+                    telecom?.silenceRinger()
+                    muted = true
+                }
+            }
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager != null) {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_RING,
+                    AudioManager.ADJUST_MUTE,
+                    0
+                )
+                muted = true
+            }
+        } catch (_: Exception) {
+        }
+        return muted
     }
 }
