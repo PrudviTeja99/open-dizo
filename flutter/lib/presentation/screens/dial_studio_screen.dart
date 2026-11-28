@@ -918,17 +918,30 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
         const SizedBox(height: 18),
         _buildSectionHeader('DATE DISPLAY'),
         const SizedBox(height: 10),
-        FilterChip(
-          label: const Text('Show Date'),
-          selected: _clockStyle.showDate,
-          selectedColor: AppTheme.accent,
-          labelStyle: TextStyle(
-            color: _clockStyle.showDate ? const Color(0xFF0A0C10) : Colors.white,
-            fontWeight: FontWeight.w700,
+        Container(
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.border),
           ),
-          onSelected: (val) => setState(() {
-            _clockStyle = _clockStyle.copyWith(showDate: val);
-          }),
+          child: SwitchListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            title: const Text(
+              'Show Date on Dial',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            subtitle: Text(
+              _clockStyle.showDate
+                  ? 'Choose a date format style below'
+                  : 'Date hidden from watch face',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+            value: _clockStyle.showDate,
+            activeThumbColor: AppTheme.accent,
+            onChanged: (val) => setState(() {
+              _clockStyle = _clockStyle.copyWith(showDate: val);
+            }),
+          ),
         ),
         if (_clockStyle.showDate) ...[
           const SizedBox(height: 12),
