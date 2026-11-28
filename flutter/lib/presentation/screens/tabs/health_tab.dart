@@ -56,12 +56,13 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
   Widget build(BuildContext context) {
     final telemetry = widget.bleService.telemetry;
     final isConnected = widget.bleService.isConnected;
+    final isConnecting = widget.bleService.isConnecting;
     final isSyncing = widget.bleService.isSyncing;
     final isMeasuring = widget.bleService.isMeasuringHealth;
 
-    if (isSyncing && !_syncAnimController.isAnimating) {
+    if ((isSyncing || isConnecting) && !_syncAnimController.isAnimating) {
       _syncAnimController.repeat();
-    } else if (!isSyncing && _syncAnimController.isAnimating) {
+    } else if (!isSyncing && !isConnecting && _syncAnimController.isAnimating) {
       _syncAnimController.stop();
       _syncAnimController.reset();
     }
@@ -76,7 +77,7 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       children: [
         // 1. Hero Watch Connection & Battery Capsule
-        _buildConnectionHero(isConnected, telemetry.battery, telemetry.lastSyncTime),
+        _buildConnectionHero(isConnected, isConnecting, telemetry.battery, telemetry.lastSyncTime),
         const SizedBox(height: 16),
 
         // 2. Primary Activity Progress Ring Card
@@ -94,13 +95,27 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildConnectionHero(bool isConnected, int? battery, DateTime? lastSync) {
+  Widget _buildConnectionHero(bool isConnected, bool isConnecting, int? battery, DateTime? lastSync) {
+    final statusColor = isConnected
+        ? AppTheme.success
+        : (isConnecting ? AppTheme.accent : AppTheme.textMuted);
+    final statusTitle = isConnected
+        ? 'DIZO Watch D Active'
+        : (isConnecting ? 'Connecting to Watch...' : 'Disconnected');
+    final statusSubtitle = isConnecting
+        ? 'Establishing BLE connection...'
+        : (lastSync != null
+            ? 'Synced ${DateFormat('hh:mm a').format(lastSync)}'
+            : (isConnected ? 'Ready to sync' : 'Tap to reconnect'));
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(
+          color: isConnecting ? AppTheme.accent.withOpacity(0.5) : AppTheme.border,
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -111,12 +126,12 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: isConnected ? AppTheme.success : AppTheme.textMuted,
+                  color: statusColor,
                   shape: BoxShape.circle,
-                  boxShadow: isConnected
+                  boxShadow: (isConnected || isConnecting)
                       ? [
                           BoxShadow(
-                            color: AppTheme.success.withOpacity(0.5),
+                            color: statusColor.withOpacity(0.5),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
@@ -129,7 +144,7 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isConnected ? 'DIZO Watch D Active' : 'Disconnected',
+                    statusTitle,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
@@ -137,9 +152,7 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                     ),
                   ),
                   Text(
-                    lastSync != null
-                        ? 'Synced ${DateFormat('hh:mm a').format(lastSync)}'
-                        : (isConnected ? 'Ready to sync' : 'Tap to pair'),
+                    statusSubtitle,
                     style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
                   ),
                 ],
@@ -177,17 +190,28 @@ class _HealthTabState extends State<HealthTab> with SingleTickerProviderStateMix
                 ),
               const SizedBox(width: 10),
               GestureDetector(
-                onTap: _handleSync,
+                onTap: isConnecting ? null : _handleSync,
                 child: Container(
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
                     color: AppTheme.surfaceLight,
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.border),
+                    border: Border.all(
+                      color: isConnecting ? AppTheme.accent : AppTheme.border,
+                    ),
                   ),
                   child: Center(
-                    child: RotationTransition(
+                    child: isConnecting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.accent,
+                            ),
+                          )
+                        : RotationTransition(
                       turns: _syncAnimController,
                       child: const Icon(
                         Icons.sync_rounded,

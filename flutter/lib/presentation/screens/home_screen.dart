@@ -105,27 +105,41 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: isConnected ? AppTheme.success.withOpacity(0.4) : AppTheme.border,
                 ),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: isConnected ? AppTheme.success : AppTheme.heartRate,
-                      shape: BoxShape.circle,
+                child: Row(
+                  children: [
+                    if (_bleService.isConnecting)
+                      const SizedBox(
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.8,
+                          color: AppTheme.accent,
+                        ),
+                      )
+                    else
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: isConnected ? AppTheme.success : AppTheme.heartRate,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _bleService.isConnecting
+                          ? 'Connecting...'
+                          : (isConnected ? AppStrings.t('connected') : AppStrings.t('offline')),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: (_bleService.isConnecting || isConnected)
+                            ? AppTheme.textPrimary
+                            : AppTheme.textMuted,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    isConnected ? AppStrings.t('connected') : AppStrings.t('offline'),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isConnected ? AppTheme.textPrimary : AppTheme.textMuted,
-                    ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ),
           ),
           IconButton(
