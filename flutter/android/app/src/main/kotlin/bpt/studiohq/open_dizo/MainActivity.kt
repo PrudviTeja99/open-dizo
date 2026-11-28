@@ -127,6 +127,32 @@ class MainActivity : FlutterActivity() {
                 "mutePhoneCall" -> {
                     result.success(muteIncomingCall())
                 }
+                "shareFile" -> {
+                    val filePath = call.argument<String>("filePath")
+                    val mimeType = call.argument<String>("mimeType") ?: "text/plain"
+                    val title = call.argument<String>("title") ?: "Share File"
+                    if (filePath != null) {
+                        try {
+                            val file = File(filePath)
+                            val uri = FileProvider.getUriForFile(
+                                this@MainActivity,
+                                "${applicationContext.packageName}.fileprovider",
+                                file
+                            )
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = mimeType
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            startActivity(Intent.createChooser(shareIntent, title))
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("SHARE_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.error("INVALID_ARGUMENT", "filePath is required", null)
+                    }
+                }
                 "startFindPhoneRing" -> {
                     startFindPhoneAlert()
                     result.success(true)

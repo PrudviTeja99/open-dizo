@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/l10n/app_strings.dart';
@@ -10,6 +11,7 @@ import '../../../models/notification_settings.dart';
 import '../../../services/ble_service.dart';
 import '../../dialogs/connect_device_modal.dart';
 import '../../dialogs/app_update_dialog.dart';
+import '../../widgets/ble_log_card.dart';
 
 /// Device & Settings Tab: Watch Controls, Notification & Call Hub, Display, Preferences & Maintenance
 class DeviceSettingsTab extends StatefulWidget {
@@ -25,6 +27,7 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
   Timer? _brightnessDebounceTimer;
   bool _notifAccessGranted = false;
   bool _phonePermsGranted = false;
+  final ScrollController _logScrollController = ScrollController();
 
   @override
   void initState() {
@@ -79,6 +82,7 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _brightnessDebounceTimer?.cancel();
+    _logScrollController.dispose();
     super.dispose();
   }
 
@@ -149,6 +153,42 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
         _buildSectionHeader(AppStrings.t('system_diagnostics'), 'Firmware, updates, and device management'),
         const SizedBox(height: 12),
         _buildMaintenanceCard(isConnected),
+        const SizedBox(height: 20),
+
+        // 11. BLE Logs & Export
+        _buildSectionHeader('BLE Logs', 'Copy or export live watch packet logs'),
+        const SizedBox(height: 12),
+        BleLogCard(
+          logs: widget.bleService.logs,
+          scrollController: _logScrollController,
+          onClear: widget.bleService.clearLogs,
+          onCopy: () async {
+            final text = widget.bleService.formatLogsAsText();
+            if (text.isEmpty) return;
+            await Clipboard.setData(ClipboardData(text: text));
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('BLE logs copied to clipboard'), duration: Duration(seconds: 2)),
+              );
+            }
+          },
+          onExport: () async {
+            try {
+              final path = await widget.bleService.exportLogs();
+              if (mounted && path != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Exported logs to $path'), duration: const Duration(seconds: 2)),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Log export failed: $e'), backgroundColor: AppTheme.heartRate),
+                );
+              }
+            }
+          },
+        ),
         const SizedBox(height: 36),
       ],
     );

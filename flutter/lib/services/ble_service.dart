@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants/dizo_uuids.dart';
@@ -274,6 +275,30 @@ class BleService extends ChangeNotifier {
   void clearLogs() {
     _logs.clear();
     notifyListeners();
+  }
+
+  String formatLogsAsText() {
+    if (_logs.isEmpty) return '';
+    return _logs
+        .map((e) => '[${e.time}] [${e.type.name.toUpperCase()}] ${e.message}')
+        .join('\n');
+  }
+
+  Future<String?> exportLogs() async {
+    final text = formatLogsAsText();
+    if (text.isEmpty) return null;
+    final dir = await getTemporaryDirectory();
+    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final file = File('${dir.path}/open_dizo_ble_logs_$ts.txt');
+    await file.writeAsString(text);
+    if (!kIsWeb && Platform.isAndroid) {
+      await _notifMethodChannel.invokeMethod('shareFile', {
+        'filePath': file.path,
+        'mimeType': 'text/plain',
+        'title': 'Open Dizo BLE Logs',
+      });
+    }
+    return file.path;
   }
 
   void log(String message, {LogType type = LogType.info}) {
