@@ -139,11 +139,14 @@ class DizoNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        // Skip ongoing background services and group summaries
+        // Skip ongoing background services (e.g. music player, foreground service)
         if ((notification.flags and Notification.FLAG_ONGOING_EVENT) != 0) return
-        if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
 
         val body = extractFullNotificationBody(extras)
+
+        // Skip empty group summaries (e.g. "3 new messages" with no actual body)
+        val isGroupSummary = (notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+        if (isGroupSummary && body.isEmpty()) return
 
         if (title.isEmpty() && body.isEmpty()) return
 

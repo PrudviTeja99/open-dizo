@@ -1734,7 +1734,10 @@ class BleService extends ChangeNotifier {
       final body = data['body'] as String? ?? '';
 
       final resolvedType = _mapPackageToNotificationType(pkg);
-      if (resolvedType == null) return;
+      if (resolvedType == null) {
+        log('Notif ignored ($pkg): disabled in Notification Settings', type: LogType.info);
+        return;
+      }
 
       sendNotification(type: resolvedType, title: title, body: body);
     }
