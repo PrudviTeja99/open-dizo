@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/clock_style.dart';
@@ -66,7 +68,40 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
     if (_storageService.items.isNotEmpty) {
       _selectedWallpaper = _storageService.items.first;
     }
-    setState(() => _isLoading = false);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedLayout = prefs.getString('last_flashed_studio_layout');
+      if (savedLayout != null) {
+        final decoded = jsonDecode(savedLayout) as Map<String, dynamic>;
+        final styleMap = decoded['clockStyle'] as Map<String, dynamic>?;
+        if (styleMap != null) {
+          _clockStyle = ClockStyle.fromJson(styleMap);
+        }
+        final wpId = decoded['wallpaperId'] as String?;
+        if (wpId != null && _storageService.items.isNotEmpty) {
+          final match = _storageService.items.where((w) => w.id == wpId);
+          if (match.isNotEmpty) {
+            _selectedWallpaper = match.first;
+          }
+        }
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveLastFlashedLayout() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'last_flashed_studio_layout',
+        jsonEncode({
+          'wallpaperId': _selectedWallpaper?.id,
+          'clockStyle': _clockStyle.toJson(),
+        }),
+      );
+    } catch (_) {}
   }
 
   Future<void> _pickNewWallpaper() async {
@@ -297,6 +332,7 @@ class _DialStudioScreenState extends State<DialStudioScreen> {
         isCompleted = true;
         progressValue = 1.0;
         statusText = 'Watch face flashed and activated successfully!';
+        await _saveLastFlashedLayout();
         widget.bleService.log('Watch face flashed & activated ✓', type: LogType.success);
         updateDialog?.call(() {});
       } catch (e, stack) {

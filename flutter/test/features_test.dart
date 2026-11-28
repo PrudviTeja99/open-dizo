@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_dizo/core/l10n/app_strings.dart';
+import 'package:open_dizo/models/clock_style.dart';
 import 'package:open_dizo/models/watch_alarm.dart';
 import 'package:open_dizo/models/watch_settings.dart';
 import 'package:open_dizo/models/notification_settings.dart';
@@ -413,6 +415,32 @@ void main() {
         LanguageApplyTarget.fromId(decoded.languageTarget),
         equals(LanguageApplyTarget.watchOnly),
       );
+    });
+
+    test('ClockStyle serializes and restores last flashed layout', () {
+      const original = ClockStyle(
+        position: ClockPosition('Custom', 42, 120, isCustom: true),
+        size: ClockSize.large,
+        templateStyle: ClockTemplateStyle.athletic,
+        isVisible: true,
+        textColor: Color(0xFF00E5FF),
+        isStacked: true,
+        showDate: false,
+        dateStyle: DateStyle.pillBadge,
+        showBattery: true,
+        showSteps: true,
+        showHeartRate: false,
+      );
+      final restored = ClockStyle.fromJson(original.toJson());
+      expect(restored.position.x, equals(42));
+      expect(restored.position.y, equals(120));
+      expect(restored.size, equals(ClockSize.large));
+      expect(restored.templateStyle.id, equals(ClockTemplateStyle.athletic.id));
+      expect(restored.isStacked, isTrue);
+      expect(restored.showDate, isFalse);
+      expect(restored.dateStyle, equals(DateStyle.pillBadge));
+      expect(restored.showBattery, isTrue);
+      expect(restored.showSteps, isTrue);
     });
   });
 }

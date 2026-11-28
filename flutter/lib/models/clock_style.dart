@@ -339,4 +339,58 @@ class ClockStyle {
       showHeartRate: showHeartRate ?? this.showHeartRate,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'posLabel': position.label,
+        'posX': position.x,
+        'posY': position.y,
+        'posCustom': position.isCustom,
+        'size': size.name,
+        'templateId': templateStyle.id,
+        'isVisible': isVisible,
+        'textColor': textColor.toARGB32(),
+        'isStacked': isStacked,
+        'showDate': showDate,
+        'dateStyle': dateStyle.name,
+        'showBattery': showBattery,
+        'showSteps': showSteps,
+        'showHeartRate': showHeartRate,
+      };
+
+  factory ClockStyle.fromJson(Map<String, dynamic> json) {
+    final templateId = json['templateId'] as String? ?? 'modern';
+    final template = ClockTemplateStyle.gallery.firstWhere(
+      (t) => t.id == templateId,
+      orElse: () => ClockTemplateStyle.modern,
+    );
+    final sizeName = json['size'] as String? ?? 'standard';
+    final size = ClockSize.values.firstWhere(
+      (s) => s.name == sizeName,
+      orElse: () => ClockSize.standard,
+    );
+    final dateName = json['dateStyle'] as String? ?? 'dayNumber';
+    final dateStyle = DateStyle.values.firstWhere(
+      (d) => d.name == dateName,
+      orElse: () => DateStyle.dayNumber,
+    );
+
+    return ClockStyle(
+      position: ClockPosition(
+        json['posLabel'] as String? ?? 'Center',
+        json['posX'] as int? ?? 55,
+        json['posY'] as int? ?? 100,
+        isCustom: json['posCustom'] as bool? ?? false,
+      ),
+      size: size,
+      templateStyle: template,
+      isVisible: json['isVisible'] as bool? ?? true,
+      textColor: Color(json['textColor'] as int? ?? 0xFFFFFFFF),
+      isStacked: json['isStacked'] as bool? ?? false,
+      showDate: json['showDate'] as bool? ?? true,
+      dateStyle: dateStyle,
+      showBattery: json['showBattery'] as bool? ?? false,
+      showSteps: json['showSteps'] as bool? ?? false,
+      showHeartRate: json['showHeartRate'] as bool? ?? false,
+    );
+  }
 }
