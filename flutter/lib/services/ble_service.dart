@@ -683,7 +683,7 @@ class BleService extends ChangeNotifier {
     }
 
     // 3. Direct / unframed packet format: [cmdId, version, keyPacket...]
-    if (data.length >= 5 && (data[0] == 0x02 || data[0] == 0x05 || data[0] == 0x03 || data[0] == 0x01 || data[0] == 0x07)) {
+    if (data.length >= 5 && (data[0] == 0x02 || data[0] == 0x04 || data[0] == 0x05 || data[0] == 0x03 || data[0] == 0x01 || data[0] == 0x07)) {
       final cmdId = data[0];
       _parseCmdPacket(cmdId, data.sublist(2), source);
       return;
@@ -936,6 +936,8 @@ class BleService extends ChangeNotifier {
       }
       return;
     }
+
+    log('Unhandled packet: Cmd 0x${cmdId.toRadixString(16)}, Key 0x${keyId.toRadixString(16)} (${keyData.length}B)', type: LogType.info);
   }
 
   void _decodeLegacyTelemetry(List<int> data) {
@@ -1600,10 +1602,15 @@ class BleService extends ChangeNotifier {
     required String body,
   }) async {
     if (!_isConnected) return;
+    // Match official companion app layout: leave name empty for app notifications
+    // and combine title + body in content so the watch doesn't truncate/offset the sender.
+    final combinedBody = title.isNotEmpty
+        ? (body.isNotEmpty ? '$title: $body' : title)
+        : body;
     final packet = HtsmartProtocol.buildNotificationPushPacket(
       type: type,
-      name: title,
-      content: body,
+      name: '',
+      content: combinedBody,
       useExtendedFormat: _useExtNewNotificationFormat,
       seq: _nextSeq(),
     );
@@ -1760,6 +1767,13 @@ class BleService extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<void> requestPhonePermissions() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      await _notifMethodChannel.invokeMethod('requestPhonePermissions');
+    } catch (_) {}
   }
 
   // ==========================================

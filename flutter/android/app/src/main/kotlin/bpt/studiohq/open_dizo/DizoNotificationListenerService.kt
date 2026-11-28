@@ -152,19 +152,22 @@ class DizoNotificationListenerService : NotificationListenerService() {
     }
 
     private fun extractFullNotificationBody(extras: android.os.Bundle): String {
-        // 1. MessagingStyle (WhatsApp, Telegram, Messages, etc.)
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
+
+        // 1. MessagingStyle (WhatsApp, Telegram, Messages, etc.) — take the LATEST message
+        // so old unread messages don't get mashed onto the newest reply.
         @Suppress("DEPRECATION")
         val messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
         if (messages != null && messages.isNotEmpty()) {
-            val lines = messages.mapNotNull { item ->
-                val bundle = item as? android.os.Bundle ?: return@mapNotNull null
-                val msgText = bundle.getCharSequence("text")?.toString()?.trim()
-                if (msgText.isNullOrEmpty()) return@mapNotNull null
-                val sender = bundle.getCharSequence("sender")?.toString()?.trim()
-                if (!sender.isNullOrEmpty()) "$sender: $msgText" else msgText
-            }
-            if (lines.isNotEmpty()) {
-                return lines.joinToString("\n")
+            val latestBundle = messages.lastOrNull() as? android.os.Bundle
+            val msgText = latestBundle?.getCharSequence("text")?.toString()?.trim()
+            if (!msgText.isNullOrEmpty()) {
+                val sender = latestBundle.getCharSequence("sender")?.toString()?.trim()
+                return if (!sender.isNullOrEmpty() && !sender.equals(title, ignoreCase = true)) {
+                    "$sender: $msgText"
+                } else {
+                    msgText
+                }
             }
         }
 

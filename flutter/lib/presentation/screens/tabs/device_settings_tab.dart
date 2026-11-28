@@ -54,6 +54,7 @@ class _DeviceSettingsTabState extends State<DeviceSettingsTab> with WidgetsBindi
 
   Future<void> _requestPhonePermissions() async {
     if (kIsWeb || !Platform.isAndroid) return;
+    await widget.bleService.requestPhonePermissions();
     await [
       Permission.phone,
       Permission.contacts,

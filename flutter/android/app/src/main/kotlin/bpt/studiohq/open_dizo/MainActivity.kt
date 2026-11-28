@@ -18,6 +18,7 @@ import android.os.VibratorManager
 import android.provider.Settings
 import android.telecom.TelecomManager
 import android.view.KeyEvent
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -107,6 +108,18 @@ class MainActivity : FlutterActivity() {
                         true
                     }
                     result.success(phoneGranted && callLogGranted && answerGranted)
+                }
+                "requestPhonePermissions" -> {
+                    val perms = mutableListOf(
+                        Manifest.permission.READ_PHONE_STATE,
+                        Manifest.permission.READ_CALL_LOG,
+                        Manifest.permission.READ_CONTACTS
+                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        perms.add(Manifest.permission.ANSWER_PHONE_CALLS)
+                    }
+                    ActivityCompat.requestPermissions(this, perms.toTypedArray(), 1001)
+                    result.success(true)
                 }
                 "endPhoneCall" -> {
                     result.success(endIncomingCall())
@@ -308,12 +321,26 @@ class MainActivity : FlutterActivity() {
             }
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             if (audioManager != null) {
-                audioManager.adjustStreamVolume(
-                    AudioManager.STREAM_RING,
-                    AudioManager.ADJUST_MUTE,
-                    0
-                )
-                muted = true
+                try {
+                    audioManager.adjustStreamVolume(
+                        AudioManager.STREAM_RING,
+                        AudioManager.ADJUST_MUTE,
+                        0
+                    )
+                    muted = true
+                } catch (_: SecurityException) {
+                    // Android 7+ throws SecurityException on ADJUST_MUTE without DND access;
+                    // step STREAM_RING volume down to 0 instead.
+                    val current = audioManager.getStreamVolume(AudioManager.STREAM_RING)
+                    for (i in 0 until current) {
+                        audioManager.adjustStreamVolume(
+                            AudioManager.STREAM_RING,
+                            AudioManager.ADJUST_LOWER,
+                            0
+                        )
+                    }
+                    muted = true
+                }
             }
         } catch (_: Exception) {
         }
